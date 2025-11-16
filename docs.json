@@ -1,103 +1,73 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "theme": "willow",
+  "name": "NWERP Documentação",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#0066CC",
+    "light": "#3399FF",
+    "dark": "#003366"
   },
   "favicon": "/favicon.svg",
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "NWERP",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Início",
             "pages": [
-              "index",
-              "quickstart",
-              "development"
+              "nwerp/index",
+              "nwerp/quickstart"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Arquitetura",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "nwerp/architecture/overview",
+              "nwerp/architecture/statistics",
+              "nwerp/architecture/classes",
+              "nwerp/architecture/estimates"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Componentes",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "nwerp/components/core",
+              "nwerp/components/gateway",
+              "nwerp/components/backoffice",
+              "nwerp/components/orchestration",
+              "nwerp/components/bridge",
+              "nwerp/components/winthor",
+              "nwerp/components/goposify",
+              "nwerp/components/argos",
+              "nwerp/components/sped"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Deployment",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
-            ]
-          }
-        ]
-      },
-      {
-        "tab": "API reference",
-        "groups": [
-          {
-            "group": "API documentation",
-            "pages": [
-              "api-reference/introduction"
-            ]
-          },
-          {
-            "group": "Endpoint examples",
-            "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "nwerp/deployment/infrastructure"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
+    ]
   },
   "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
+    "light": "/logo/logo_horizontal.png",
+    "dark": "/logo/logo_horizontal.png"
   },
   "navbar": {
     "links": [
       {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
+        "label": "Suporte",
+        "href": "mailto:suporte@nwerp.com"
       }
     ],
     "primary": {
       "type": "button",
       "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
+      "href": "https://dashboard.nwerp.com"
     }
   },
   "contextual": {
@@ -114,9 +84,8 @@
   },
   "footer": {
     "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
+      "github": "https://github.com/your-org/nwerp",
+      "linkedin": "https://linkedin.com/company/nwerp"
     }
   }
 }

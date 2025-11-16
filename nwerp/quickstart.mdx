@@ -1,0 +1,327 @@
+---
+title: "Início Rápido"
+description: "Configure e execute o NWERP em seu ambiente de desenvolvimento"
+icon: "rocket"
+---
+
+Este guia irá ajudá-lo a configurar e executar o NWERP em seu ambiente local de desenvolvimento.
+
+## Pré-requisitos
+
+Antes de começar, certifique-se de ter as seguintes ferramentas instaladas:
+
+<CardGroup cols={2}>
+  <Card title=".NET 9 SDK" icon="microsoft">
+    SDK mais recente do .NET 9
+  </Card>
+  <Card title="Docker Desktop" icon="docker">
+    Para containerização dos serviços
+  </Card>
+  <Card title="Node.js 18+" icon="node-js">
+    Para aplicações frontend
+  </Card>
+  <Card title="Git" icon="git">
+    Para clonar o repositório
+  </Card>
+</CardGroup>
+
+<Tabs>
+  <Tab title="Windows">
+    ```powershell
+    # Instalar .NET 9 SDK
+    winget install Microsoft.DotNet.SDK.9
+
+    # Instalar Docker Desktop
+    winget install Docker.DockerDesktop
+
+    # Instalar Node.js
+    winget install OpenJS.NodeJS.LTS
+    ```
+  </Tab>
+
+  <Tab title="macOS">
+    ```bash
+    # Instalar .NET 9 SDK
+    brew install dotnet@9
+
+    # Instalar Docker Desktop
+    brew install --cask docker
+
+    # Instalar Node.js
+    brew install node@18
+    ```
+  </Tab>
+
+  <Tab title="Linux">
+    ```bash
+    # Instalar .NET 9 SDK
+    wget https://dot.net/v1/dotnet-install.sh
+    chmod +x dotnet-install.sh
+    ./dotnet-install.sh --channel 9.0
+
+    # Instalar Docker
+    curl -fsSL https://get.docker.com -o get-docker.sh
+    sudo sh get-docker.sh
+
+    # Instalar Node.js
+    curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+    sudo apt-get install -y nodejs
+    ```
+  </Tab>
+</Tabs>
+
+## Instalação
+
+<Steps>
+  <Step title="Clone o Repositório">
+    Clone o repositório do NWERP para sua máquina local:
+
+    ```bash
+    git clone https://github.com/sua-org/nwerp.git
+    cd nwerp
+    ```
+
+    <Check>
+      Verifique se o clone foi bem-sucedido listando os arquivos do diretório
+    </Check>
+  </Step>
+
+  <Step title="Configure o Ambiente">
+    Execute o script de configuração do ambiente:
+
+    ```bash
+    ./setup-env.sh
+    ```
+
+    Este script irá:
+    - Configurar variáveis de ambiente necessárias
+    - Criar arquivos de configuração local
+    - Validar as dependências instaladas
+
+    <Warning>
+      No Windows, use Git Bash ou WSL para executar scripts shell
+    </Warning>
+  </Step>
+
+  <Step title="Inicie a Infraestrutura">
+    Suba os serviços de infraestrutura usando Docker Compose:
+
+    ```bash
+    docker-compose -f docker-compose-infra.yml up -d
+    ```
+
+    Serviços que serão iniciados:
+    - PostgreSQL (porta 5432)
+    - RabbitMQ (porta 5672, interface web: 15672)
+    - Redis (porta 6379)
+    - PgWeb (porta 8081)
+
+    <Tip>
+      Use `docker-compose ps` para verificar o status dos containers
+    </Tip>
+  </Step>
+
+  <Step title="Verifique a Infraestrutura">
+    Aguarde até que todos os serviços estejam saudáveis:
+
+    ```bash
+    # Verificar status dos containers
+    docker-compose -f docker-compose-infra.yml ps
+
+    # Verificar logs
+    docker-compose -f docker-compose-infra.yml logs -f
+    ```
+
+    <Check>
+      Todos os serviços devem mostrar status "healthy" ou "running"
+    </Check>
+  </Step>
+</Steps>
+
+## Executando os Serviços
+
+Após configurar a infraestrutura, você pode executar diferentes cenários:
+
+<Tabs>
+  <Tab title="Backoffice">
+    Execute o serviço de Backoffice para gerenciamento administrativo:
+
+    ```bash
+    cd backoffice
+    dotnet run --project NWERP.Backoffice.AppHost
+    ```
+
+    O serviço estará disponível em: `https://localhost:7001`
+
+    <Info>
+      O Backoffice gerencia tenants, planos e alocação de recursos
+    </Info>
+  </Tab>
+
+  <Tab title="GoPosify (POS)">
+    Execute o sistema de PDV completo:
+
+    ```bash
+    # Backend
+    docker-compose -f docker-compose.pos-backend.yml up -d
+
+    # Frontend
+    cd nwerp-goposify/NWERP.GoPosify.ClientApp
+    npm install
+    npm start
+    ```
+
+    Acesso:
+    - Frontend: `http://localhost:4200`
+    - Backend: `https://localhost:7002`
+
+    <Tip>
+      Credenciais padrão: admin@goposify.com / Admin@123
+    </Tip>
+  </Tab>
+
+  <Tab title="Winthor Integration">
+    Execute a integração com Winthor:
+
+    ```bash
+    docker-compose -f docker-compose.winthor.yml up -d
+    ```
+
+    O serviço estará disponível em: `https://localhost:7003`
+
+    <Warning>
+      Certifique-se de configurar as strings de conexão Oracle no appsettings.json
+    </Warning>
+  </Tab>
+
+  <Tab title="Todos os Serviços">
+    Execute todos os serviços simultaneamente:
+
+    ```bash
+    docker-compose up -d
+    ```
+
+    <Note>
+      Esta opção requer recursos significativos da máquina (mínimo 16GB RAM)
+    </Note>
+  </Tab>
+</Tabs>
+
+## Acessando os Serviços
+
+Após iniciar os serviços, você pode acessá-los através das seguintes URLs:
+
+| Serviço | URL | Credenciais Padrão |
+|---------|-----|-------------------|
+| GoPosify | http://localhost:4200 | admin@goposify.com / Admin@123 |
+| RabbitMQ Management | http://localhost:15672 | guest / guest |
+| PgWeb | http://localhost:8081 | - |
+| Aspire Dashboard | http://localhost:18888 | - |
+
+## Verificando a Instalação
+
+<AccordionGroup>
+  <Accordion title="Testar Conectividade do Banco de Dados">
+    ```bash
+    docker exec -it postgres psql -U postgres -c "SELECT version();"
+    ```
+
+    Você deve ver a versão do PostgreSQL instalada.
+  </Accordion>
+
+  <Accordion title="Verificar RabbitMQ">
+    Acesse http://localhost:15672 e faça login com guest/guest.
+    
+    Verifique se os vhosts e exchanges foram criados corretamente.
+  </Accordion>
+
+  <Accordion title="Testar API do Backoffice">
+    ```bash
+    curl -k https://localhost:7001/health
+    ```
+
+    Deve retornar status "Healthy".
+  </Accordion>
+
+  <Accordion title="Verificar Logs">
+    ```bash
+    # Logs da infraestrutura
+    docker-compose -f docker-compose-infra.yml logs -f
+
+    # Logs de um serviço específico
+    docker logs -f nwerp-postgres
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Solução de Problemas
+
+<Warning>
+  Se você encontrar problemas durante a instalação, consulte as seções abaixo.
+</Warning>
+
+### Porta Já em Uso
+
+Se uma porta já estiver em uso, você pode alterá-la nos arquivos docker-compose.yml:
+
+```yaml
+ports:
+  - "5433:5432"  # Altere 5432 para outra porta
+```
+
+### Containers Não Iniciam
+
+Verifique os logs do container específico:
+
+```bash
+docker logs nome-do-container
+```
+
+Reinicie os containers:
+
+```bash
+docker-compose down
+docker-compose up -d
+```
+
+### Erro de Memória
+
+Se você tiver problemas de memória, ajuste os limites nos arquivos compose:
+
+```yaml
+deploy:
+  resources:
+    limits:
+      memory: 512M
+```
+
+### Problemas de Rede
+
+Recrie a rede Docker:
+
+```bash
+docker network prune
+docker-compose up -d
+```
+
+## Próximos Passos
+
+<CardGroup cols={2}>
+  <Card title="Arquitetura" icon="sitemap" href="/nwerp/architecture/overview">
+    Entenda a arquitetura do sistema
+  </Card>
+  <Card title="Componentes" icon="cube" href="/nwerp/components/core">
+    Explore os componentes em detalhes
+  </Card>
+  <Card title="APIs" icon="code" href="/nwerp/api/introduction">
+    Documentação das APIs
+  </Card>
+  <Card title="Deployment" icon="server" href="/nwerp/deployment/infrastructure">
+    Guias de produção
+  </Card>
+</CardGroup>
+
+<Check>
+  **Parabéns!** Você configurou com sucesso o ambiente de desenvolvimento NWERP.
+</Check>
+

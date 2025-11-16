@@ -1,0 +1,489 @@
+---
+title: "Classes Principais"
+description: "Lista das principais classes de cada módulo do sistema NWERP"
+icon: "diagram-project"
+---
+
+## Visão Geral
+
+Este documento apresenta as principais classes de cada projeto do sistema NWERP, organizadas por módulo.
+
+<CardGroup cols={4}>
+  <Card title="Backoffice" icon="building">
+    **117** classes
+  </Card>
+  <Card title="Gateway" icon="gateway">
+    **23** classes
+  </Card>
+  <Card title="GoPosify" icon="cash-register">
+    **135** classes
+  </Card>
+  <Card title="Winthor" icon="database">
+    **837** classes
+  </Card>
+</CardGroup>
+
+## Backoffice
+
+Módulo de administração e gestão multi-tenant do sistema.
+
+### Infrastructure - Adapters
+
+<Tabs>
+  <Tab title="Allocation">
+    Classes responsáveis pela alocação de recursos:
+    
+    - `Allocator` - Responsável pela alocação de recursos
+    - `DatabaseCreateRequestFactory` - Criação de requisições para databases
+    - `DatabaseFactory` - Fábrica para objetos de banco de dados
+    - `HostCreateRequestFactory` - Criação de requisições para hosts
+    - `HostFactory` - Fábrica para objetos de host
+    - `TenantFactory` - Fábrica para objetos de inquilino
+  </Tab>
+
+  <Tab title="Messaging">
+    Adaptadores para mensageria com RabbitMQ:
+    
+    - `DatabaseChangedEventRabbitMQAdapter` - Eventos de mudança de banco
+    - `HostChangedEventRabbitMQAdapter` - Eventos de mudança de host
+    - `RabbitMQBoostrapper` - Inicializador para RabbitMQ
+    - `TenantChangedEventRabbitMQAdapter` - Eventos de mudança de inquilino
+  </Tab>
+
+  <Tab title="Security">
+    - `PasswordGenerator` - Gerador de senhas seguras
+  </Tab>
+</Tabs>
+
+### Infrastructure - Services
+
+<Accordion title="Serviços de Alocação Física">
+  - `DatabasePhysicalAllocatorService` - Serviço para alocação física de bancos de dados
+  - `HostPhysicalAllocatorService` - Serviço para alocação física de hosts
+  - `TenantPhysicalAllocatorService` - Serviço para alocação física de inquilinos
+</Accordion>
+
+### AppHost - Controllers
+
+<CardGroup cols={3}>
+  <Card title="MultiTenantController" icon="building">
+    Gerenciamento multi-inquilino
+  </Card>
+  <Card title="PlanController" icon="list">
+    Gerenciamento de planos
+  </Card>
+  <Card title="PurchaseController" icon="cart-shopping">
+    Gerenciamento de compras
+  </Card>
+</CardGroup>
+
+### AppHost - Workloads
+
+<Accordion title="Workloads Disponíveis">
+  - `AspNetWorkload` - Carga de trabalho para ASP.NET
+  - `BootstrapWorkload` - Carga de trabalho para inicialização
+  - `WebApiWorkload` - Carga de trabalho para WebAPI
+  - `WorkerWorkload` - Carga de trabalho para workers
+</Accordion>
+
+### Domain
+
+Entidades principais do domínio:
+
+- `AllocationType` - Tipos de alocação
+- `Database` - Representação de banco de dados
+- `Host` - Representação de host
+- `IAllocableResource` - Interface para recursos alocáveis
+- `Plan` - Representação de plano
+- `ResourceStatus` - Status de recursos
+- `Tenant` - Representação de inquilino
+
+## GoPosify
+
+Sistema de Ponto de Venda (PDV) com interface Angular moderna.
+
+### Controllers
+
+<Tabs>
+  <Tab title="Gestão">
+    - `AccountingController` - Contabilidade
+    - `AppController` - Principal da aplicação
+    - `AuthController` - Autenticação
+    - `BaseController` - Controlador base
+    - `HomeController` - Página inicial
+    - `SettingsController` - Configurações
+  </Tab>
+
+  <Tab title="Operações">
+    - `InventoryController` - Inventário
+    - `PurchasesController` - Compras
+    - `SalesController` - Vendas
+    - `QuotationsController` - Cotações
+    - `PeopleController` - Pessoas
+  </Tab>
+
+  <Tab title="RH & Mídia">
+    - `HRMController` - Recursos humanos
+    - `MediaController` - Mídia
+    - `ReportsController` - Relatórios
+    - `UtilitiesController` - Utilitários
+  </Tab>
+</Tabs>
+
+### Data Transfer Objects (DTO)
+
+<AccordionGroup>
+  <Accordion title="Configurações" icon="gear">
+    - `EmailSettingDTO` - Configurações de email
+    - `GeneralSettingDTO` - Configurações gerais
+    - `POSSettingDTO` - Configurações do PDV
+    - `SystemSettingDTO` - Configurações do sistema
+    - `ThemeSettingDTO` - Configurações de tema
+  </Accordion>
+
+  <Accordion title="Autenticação" icon="lock">
+    - `LoginDTO` - Login
+    - `ChangePasswordDTO` - Alteração de senha
+    - `ForgotPasswordDTO` - Recuperação de senha
+    - `ResetPasswordDTO` - Redefinição de senha
+  </Accordion>
+
+  <Accordion title="Cadastros" icon="database">
+    - `AttachmentDTO` - Anexos
+    - `BrandDTO` - Marcas
+    - `CategoryDTO` - Categorias
+    - `EmployeeDTO` - Funcionários
+    - `LanguageDTO` - Idiomas
+  </Accordion>
+
+  <Accordion title="Operacional" icon="cash-register">
+    - `ChartDTO` - Gráficos
+    - `GeneratePayrollDTO` - Geração de folha de pagamento
+  </Accordion>
+</AccordionGroup>
+
+### Models
+
+<Tabs>
+  <Tab title="Financeiro">
+    - `Account` - Contas
+    - `AccountTransaction` - Transações de contas
+    - `Expense` - Despesas
+    - `Coupon` - Cupons
+  </Tab>
+
+  <Tab title="Produtos">
+    - `Product` - Produtos
+    - `ProductVariant` - Variantes de produtos
+    - `Category` - Categorias
+    - `Brand` - Marcas
+  </Tab>
+
+  <Tab title="Vendas & Compras">
+    - `Sale` - Vendas
+    - `Purchase` - Compras
+    - `Customer` - Clientes
+    - `Supplier` - Fornecedores
+  </Tab>
+
+  <Tab title="RH & Sistema">
+    - `Employee` - Funcionários
+    - `Department` - Departamentos
+    - `Attendance` - Presença
+    - `Warehouse` - Armazéns
+    - `AppSetting` - Configurações da aplicação
+    - `AuditLog` - Logs de auditoria
+  </Tab>
+</Tabs>
+
+## Winthor
+
+Módulo de integração com o sistema ERP legacy Winthor.
+
+### AppHost - JobsConfig
+
+<AccordionGroup>
+  <Accordion title="Jobs de Configuração" icon="gear">
+    - `AtualizacaoScriptsBD` - Atualização de scripts de banco de dados
+    - `ConfiguracaoIncial` - Configuração inicial
+    - `CreateJobs` - Criação de jobs
+    - `JobsHangfireConfiguration` - Configuração do Hangfire
+    - `IConfiguracaoInicial` - Interface para configuração inicial
+  </Accordion>
+
+  <Accordion title="Jobs de Processamento" icon="gears">
+    - `GerenciamentoFila` - Gerenciamento de filas
+    - `IProcessamentoDadosPendentes` - Interface para processamento pendente
+    - `ProcessamentoDadosPendentes` - Processamento de dados pendentes
+    - `ProcessamentosWebApi` - Processamentos para WebAPI
+  </Accordion>
+
+  <Accordion title="Jobs de Manutenção" icon="wrench">
+    - `JobsManipulacaoBancoDados` - Manipulação de banco de dados
+    - `LimpezaLogs` - Limpeza de logs
+    - `Scripts` - Scripts diversos
+  </Accordion>
+</AccordionGroup>
+
+### AppHost - Models
+
+- `BaseModelApp` - Modelo base para aplicação
+- `DadosMonitorJob` - Dados de monitoramento de jobs
+- `DadosMonitorTempoTarefas` - Monitoramento de tempo de tarefas
+- `EnumIdentificadoresProcessamento` - Identificadores de processamento
+- `EnumeradorJobsExtrator` - Extrator de enumeradores de jobs
+
+## Core Components
+
+Componentes compartilhados entre todos os módulos.
+
+### ApplicationServices.Abstractions
+
+<Tabs>
+  <Tab title="APIs">
+    - `IBackOfficeMultiTenantApi` - API multi-inquilino do Backoffice
+    - `IGatewayDatabaseMigrationApi` - API de migração de banco do Gateway
+    - `IGatewayTenantImportApi` - API de importação de inquilinos
+  </Tab>
+
+  <Tab title="Commands">
+    - `ApplyDatabaseMigrationsCommandRequest` - Aplicar migrações
+    - `CreateTenantCommandRequest` - Criar inquilino
+    - `GenericCommandResponse` - Resposta genérica
+  </Tab>
+</Tabs>
+
+### Infrastructure.Bootstrappers
+
+<Accordion title="Bootstrappers">
+  - `BootstrapperRunner` - Executor de bootstrappers
+  - `ForceShutdownBootstrapper` - Desligamento forçado
+  - `DatabaseDDLBootstrapper` - DDL de banco de dados
+  - `RabbitMQAdminClient` - Cliente administrador RabbitMQ
+  - `RabbitMQVHostBoostrapper` - VHost do RabbitMQ
+</Accordion>
+
+### Infrastructure.HttpAmqpBroker
+
+<CardGroup cols={2}>
+  <Card title="PublishController" icon="paper-plane">
+    Controlador para publicação de mensagens
+  </Card>
+  <Card title="RpcController" icon="phone">
+    Controlador para chamadas RPC
+  </Card>
+</CardGroup>
+
+### Infrastructure - Adapters
+
+- `Cache` - Implementação de cache
+- `CacheFlow` - Fluxo de cache
+- `CacheFlowExtensions` - Extensões para fluxo de cache
+
+## Gateway
+
+Módulo de gateway e roteamento de APIs.
+
+### Application - Services
+
+<Accordion title="Serviços de Gateway">
+  - `TenantImportService` - Serviço para importação de inquilinos
+</Accordion>
+
+### Contracts - Services
+
+- `IDatabaseMigrationService` - Interface para migração de banco
+- `ITenantImportService` - Interface para importação de inquilinos
+
+### Domain
+
+<Tabs>
+  <Tab title="Identidade">
+    - `Tenant` - Modelo para inquilino
+    - `ApiKey` - Modelo para chave de API
+    - `Customer` - Modelo para cliente
+  </Tab>
+
+  <Tab title="Contato">
+    - `Address` - Modelo para endereço
+    - `Phone` - Modelo para telefone
+    - `PhoneContainer` - Contêiner para telefones
+  </Tab>
+
+  <Tab title="Pagamento">
+    - `CreditCard` - Modelo para cartão de crédito
+  </Tab>
+</Tabs>
+
+### Infrastructure - Services
+
+- `DatabaseMigrationService` - Serviço para migração de banco de dados
+
+## Bridge/Supabase
+
+Módulo de integração e ponte de dados.
+
+### Application - Services
+
+<CardGroup cols={2}>
+  <Card title="BaseService" icon="gear">
+    Serviço base para outros serviços
+  </Card>
+  <Card title="IntegracaoService" icon="link">
+    Serviço de integração entre sistemas
+  </Card>
+  <Card title="MetricasExportacao" icon="chart-line">
+    Métricas de exportação de dados
+  </Card>
+  <Card title="ProgressoOperacao" icon="spinner">
+    Acompanhamento de progresso
+  </Card>
+</CardGroup>
+
+### Contracts - Domain
+
+<AccordionGroup>
+  <Accordion title="Interfaces Base" icon="puzzle-piece">
+    - `BaseEntity` - Entidade base
+    - `IEntidade` - Interface para entidades
+  </Accordion>
+
+  <Accordion title="Event Sourcing" icon="timeline">
+    - `IDomainEventExtrator` - Extrator de eventos de domínio
+    - `IDomainEventsContainerExtrator` - Extrator de contêiner de eventos
+    - `IHandlerExtrator` - Extrator de handlers
+  </Accordion>
+
+  <Accordion title="Database Abstractions" icon="database">
+    - `IProcedure` - Interface para procedimentos
+    - `IVisao` - Interface para visões
+    - `IVisaoIntegracao` - Interface para visões de integração
+  </Accordion>
+</AccordionGroup>
+
+### Domain
+
+<Warning>
+  O módulo Bridge contém **mais de 800 classes** que representam entidades de negócio do sistema Winthor legado.
+  
+  Exemplos: `Pcacessotokens`, `Pcacoesrelacionadas`, `Pcagendafuncionario`, entre outros.
+</Warning>
+
+## SPED
+
+Módulo para gestão de documentos fiscais eletrônicos.
+
+### Contracts - Services
+
+- `IDatabaseMigrationService` - Interface para migração de banco
+- `ITenantImportService` - Interface para importação de inquilinos
+
+### Contracts - TO
+
+<Accordion title="Transfer Objects">
+  - `IEventBase` - Interface base para eventos
+  - `Nweintegracao` - Integração NWE
+  - `Nweparametro` - Parâmetro NWE
+  - `Nwetabela` - Tabela NWE
+</Accordion>
+
+### Domain
+
+<Tabs>
+  <Tab title="Identidade">
+    - `Tenant` - Modelo para inquilino
+    - `ApiKey` - Modelo para chave de API
+    - `Customer` - Modelo para cliente
+    - `Oie` - Modelo para OIE
+  </Tab>
+
+  <Tab title="Contato">
+    - `Address` - Modelo para endereço
+    - `Phone` - Modelo para telefone
+    - `PhoneContainer` - Contêiner para telefones
+  </Tab>
+
+  <Tab title="Pagamento">
+    - `CreditCard` - Modelo para cartão de crédito
+  </Tab>
+</Tabs>
+
+## Resumo por Módulo
+
+<CardGroup cols={2}>
+  <Card title="Backoffice" icon="building">
+    **117 classes** para gestão administrativa
+    
+    - Controllers: 3
+    - Workloads: 4
+    - Domain: 7 entidades principais
+    - Adapters: 10 classes
+  </Card>
+  
+  <Card title="GoPosify" icon="cash-register">
+    **135 classes** para sistema PDV
+    
+    - Controllers: 15
+    - DTOs: 15
+    - Models: 16 principais
+  </Card>
+  
+  <Card title="Winthor" icon="database">
+    **837 classes** para integração ERP
+    
+    - Jobs: 12 configurações
+    - Models: 5 principais
+    - Services: 23 especializados
+  </Card>
+  
+  <Card title="Gateway" icon="gateway">
+    **23 classes** para roteamento
+    
+    - Services: 2
+    - Interfaces: 2
+    - Domain: 7 entidades
+  </Card>
+</CardGroup>
+
+## Padrões Arquiteturais
+
+As classes seguem os seguintes padrões:
+
+<CardGroup cols={3}>
+  <Card title="Repository Pattern" icon="database">
+    Abstração de acesso a dados
+  </Card>
+  <Card title="Factory Pattern" icon="industry">
+    Criação de objetos complexos
+  </Card>
+  <Card title="Adapter Pattern" icon="plug">
+    Integração com sistemas externos
+  </Card>
+  <Card title="CQRS" icon="arrows-split-up-and-left">
+    Separação de leitura e escrita
+  </Card>
+  <Card title="Domain Events" icon="bell">
+    Eventos de domínio
+  </Card>
+  <Card title="DTO Pattern" icon="arrow-right-arrow-left">
+    Transferência de dados
+  </Card>
+</CardGroup>
+
+## Próximos Passos
+
+<CardGroup cols={2}>
+  <Card title="Estatísticas" icon="chart-bar" href="/nwerp/architecture/statistics">
+    Veja as estatísticas completas
+  </Card>
+  <Card title="Estimativas" icon="calendar" href="/nwerp/architecture/estimates">
+    Consulte as estimativas do projeto
+  </Card>
+  <Card title="Visão Geral" icon="diagram-project" href="/nwerp/architecture/overview">
+    Entenda a arquitetura geral
+  </Card>
+  <Card title="Componentes" icon="cubes" href="/nwerp/components/core">
+    Explore os componentes
+  </Card>
+</CardGroup>
+

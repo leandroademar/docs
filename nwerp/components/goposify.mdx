@@ -1,0 +1,825 @@
+---
+title: "GoPosify - Sistema PDV"
+description: "Sistema completo de Ponto de Venda e gestão empresarial"
+icon: "cash-register"
+---
+
+## Introdução
+
+GoPosify é um sistema completo de PDV (Ponto de Venda) e gestão empresarial que oferece funcionalidades para vendas, estoque, compras, contabilidade e recursos humanos.
+
+<CardGroup cols={2}>
+  <Card title="PDV Moderno" icon="cash-register">
+    Interface intuitiva para frente de caixa
+  </Card>
+  <Card title="Gestão de Estoque" icon="boxes-stacked">
+    Controle completo de inventário
+  </Card>
+  <Card title="Vendas e Compras" icon="cart-shopping">
+    Gestão de vendas, cotações e compras
+  </Card>
+  <Card title="Relatórios" icon="chart-line">
+    Dashboards e relatórios gerenciais
+  </Card>
+</CardGroup>
+
+## Arquitetura
+
+O GoPosify é composto por duas aplicações principais:
+
+### Frontend - Angular SPA
+
+**NWERP.GoPosify.ClientApp**
+
+<AccordionGroup>
+  <Accordion title="Tecnologias" icon="code">
+    - **Angular 17+** - Framework principal
+    - **PrimeNG** - Biblioteca de componentes UI
+    - **TypeScript** - Linguagem de programação
+    - **RxJS** - Programação reativa
+    - **NgRx** - Gerenciamento de estado (opcional)
+    - **Chart.js** - Gráficos e dashboards
+  </Accordion>
+
+  <Accordion title="Estrutura de Módulos" icon="folder-tree">
+    ```
+    src/app/
+    ├── modules/
+    │   ├── auth/           # Autenticação
+    │   ├── dashboard/      # Dashboards
+    │   ├── sales/          # Vendas
+    │   ├── purchases/      # Compras
+    │   ├── inventory/      # Estoque
+    │   ├── people/         # Clientes/Fornecedores
+    │   ├── accounting/     # Contabilidade
+    │   ├── hrm/            # Recursos Humanos
+    │   ├── reports/        # Relatórios
+    │   └── settings/       # Configurações
+    ├── core/
+    │   ├── services/       # Serviços globais
+    │   ├── guards/         # Route guards
+    │   ├── interceptors/   # HTTP interceptors
+    │   └── models/         # Modelos de dados
+    ├── shared/
+    │   ├── components/     # Componentes compartilhados
+    │   ├── directives/     # Diretivas
+    │   └── pipes/          # Pipes customizados
+    └── layout/
+        ├── header/         # Cabeçalho
+        ├── sidebar/        # Menu lateral
+        └── footer/         # Rodapé
+    ```
+  </Accordion>
+
+  <Accordion title="Componentes Principais" icon="puzzle-piece">
+    **Dashboard**
+    - Visão geral de vendas
+    - Métricas em tempo real
+    - Gráficos de performance
+    
+    **PDV (Ponto de Venda)**
+    - Busca rápida de produtos
+    - Carrinho de compras
+    - Múltiplas formas de pagamento
+    - Impressão de cupom fiscal
+    
+    **Gestão de Produtos**
+    - Cadastro completo
+    - Categorias e marcas
+    - Controle de estoque
+    - Imagens e variações
+    
+    **Vendas**
+    - Orçamentos
+    - Pedidos
+    - Devoluções
+    - Histórico de vendas
+  </Accordion>
+</AccordionGroup>
+
+### Backend - ASP.NET Core
+
+**NWERP.GoPosify.WebApp**
+
+<AccordionGroup>
+  <Accordion title="Tecnologias" icon="server">
+    - **ASP.NET Core 9** - Framework web
+    - **Entity Framework Core** - ORM
+    - **PostgreSQL** - Banco de dados
+    - **SignalR** - Comunicação real-time
+    - **FluentValidation** - Validações
+    - **AutoMapper** - Mapeamento de objetos
+    - **Serilog** - Logging estruturado
+  </Accordion>
+
+  <Accordion title="Controllers" icon="route">
+    **AuthController** - Autenticação e autorização
+    - Login/Logout
+    - Recuperação de senha
+    - Gerenciamento de tokens
+    
+    **SalesController** - Gestão de vendas
+    - Criar vendas
+    - Listar vendas
+    - Devoluções
+    - Fechamento de caixa
+    
+    **InventoryController** - Gestão de estoque
+    - Produtos
+    - Categorias e marcas
+    - Ajustes de estoque
+    - Transferências
+    
+    **PurchasesController** - Gestão de compras
+    - Pedidos de compra
+    - Recebimento
+    - Devoluções a fornecedor
+    
+    **PeopleController** - Cadastros
+    - Clientes
+    - Fornecedores
+    - Transportadoras
+    
+    **AccountingController** - Contabilidade
+    - Contas a pagar
+    - Contas a receber
+    - Fluxo de caixa
+    
+    **HRMController** - Recursos Humanos
+    - Funcionários
+    - Folha de pagamento
+    - Ponto eletrônico
+    
+    **ReportsController** - Relatórios
+    - Relatórios de vendas
+    - Relatórios de estoque
+    - Relatórios financeiros
+    
+    **SettingsController** - Configurações
+    - Configurações gerais
+    - Configurações do PDV
+    - Temas e idiomas
+  </Accordion>
+
+  <Accordion title="Modelos de Dados" icon="database">
+    **Sales (Vendas)**
+    ```csharp
+    public class Sale
+    {
+        public int Id { get; set; }
+        public string SaleNumber { get; set; }
+        public DateTime SaleDate { get; set; }
+        public int CustomerId { get; set; }
+        public Customer Customer { get; set; }
+        public decimal TotalAmount { get; set; }
+        public decimal DiscountAmount { get; set; }
+        public decimal TaxAmount { get; set; }
+        public decimal NetAmount { get; set; }
+        public SaleStatus Status { get; set; }
+        public List<SaleItem> Items { get; set; }
+        public List<SalePayment> Payments { get; set; }
+    }
+    
+    public class SaleItem
+    {
+        public int Id { get; set; }
+        public int SaleId { get; set; }
+        public int ProductId { get; set; }
+        public Product Product { get; set; }
+        public decimal Quantity { get; set; }
+        public decimal UnitPrice { get; set; }
+        public decimal Discount { get; set; }
+        public decimal Total { get; set; }
+    }
+    ```
+    
+    **Product (Produto)**
+    ```csharp
+    public class Product
+    {
+        public int Id { get; set; }
+        public string Code { get; set; }
+        public string Name { get; set; }
+        public string Description { get; set; }
+        public int CategoryId { get; set; }
+        public Category Category { get; set; }
+        public int BrandId { get; set; }
+        public Brand Brand { get; set; }
+        public string Unit { get; set; }
+        public decimal CostPrice { get; set; }
+        public decimal SalePrice { get; set; }
+        public decimal Stock { get; set; }
+        public decimal MinStock { get; set; }
+        public decimal MaxStock { get; set; }
+        public string Barcode { get; set; }
+        public bool IsActive { get; set; }
+        public List<ProductImage> Images { get; set; }
+    }
+    ```
+    
+    **Customer (Cliente)**
+    ```csharp
+    public class Customer
+    {
+        public int Id { get; set; }
+        public string Name { get; set; }
+        public string Email { get; set; }
+        public string Phone { get; set; }
+        public string Document { get; set; } // CPF/CNPJ
+        public string Address { get; set; }
+        public string City { get; set; }
+        public string State { get; set; }
+        public string ZipCode { get; set; }
+        public decimal CreditLimit { get; set; }
+        public decimal CurrentDebt { get; set; }
+        public bool IsActive { get; set; }
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Funcionalidades Detalhadas
+
+### 1. Sistema PDV (Ponto de Venda)
+
+Interface otimizada para vendas rápidas no balcão.
+
+<Tabs>
+  <Tab title="Tela de Vendas">
+    **Características:**
+    - Busca rápida de produtos (código, nome, código de barras)
+    - Visualização do carrinho em tempo real
+    - Aplicação de descontos
+    - Múltiplas formas de pagamento
+    - Identificação do cliente
+    - Impressão de cupom
+    
+    **Atalhos de Teclado:**
+    - `F2` - Buscar produto
+    - `F3` - Finalizar venda
+    - `F4` - Cancelar item
+    - `F5` - Aplicar desconto
+    - `F8` - Suspender venda
+    - `F9` - Recuperar venda suspensa
+    - `ESC` - Cancelar venda
+  </Tab>
+
+  <Tab title="Formas de Pagamento">
+    **Tipos Suportados:**
+    - Dinheiro
+    - Cartão de Crédito (1x ou parcelado)
+    - Cartão de Débito
+    - PIX
+    - Boleto
+    - Crediário (pagamento a prazo)
+    - Vale/Crédito de devolução
+    
+    **API de Pagamento:**
+    ```csharp
+    [HttpPost("sales/payments")]
+    public async Task<IActionResult> ProcessPayment(
+        [FromBody] ProcessPaymentDto payment)
+    {
+        var result = await _paymentService.ProcessAsync(payment);
+        
+        if (result.Success)
+        {
+            await _saleService.CompleteSaleAsync(payment.SaleId);
+            return Ok(result);
+        }
+        
+        return BadRequest(result.ErrorMessage);
+    }
+    ```
+  </Tab>
+
+  <Tab title="Cupom Fiscal">
+    **Emissão de NFC-e:**
+    - Integração com SEFAZ
+    - Geração de QR Code
+    - Envio por email
+    - Impressão térmica
+    
+    ```csharp
+    [HttpPost("sales/{id}/nfce")]
+    public async Task<IActionResult> EmitirNFCe(int id)
+    {
+        var sale = await _saleService.GetByIdAsync(id);
+        
+        var nfce = await _nfceService.GerarNFCeAsync(sale);
+        await _nfceService.EnviarSefazAsync(nfce);
+        
+        return Ok(new
+        {
+            ChaveAcesso = nfce.ChaveAcesso,
+            NumeroNota = nfce.Numero,
+            QrCode = nfce.QrCode
+        });
+    }
+    ```
+  </Tab>
+</Tabs>
+
+### 2. Gestão de Estoque
+
+Controle completo de inventário.
+
+<AccordionGroup>
+  <Accordion title="Produtos" icon="box">
+    **Cadastro Completo:**
+    ```typescript
+    interface Product {
+      id: number;
+      code: string;
+      barcode: string;
+      name: string;
+      description: string;
+      category: Category;
+      brand: Brand;
+      unit: string;
+      costPrice: number;
+      salePrice: number;
+      stock: number;
+      minStock: number;
+      maxStock: number;
+      images: ProductImage[];
+      variations: ProductVariation[];
+      isActive: boolean;
+    }
+    ```
+    
+    **Endpoints:**
+    ```csharp
+    [HttpGet("inventory/products")]
+    public async Task<IActionResult> GetProducts(
+        [FromQuery] ProductFilterDto filter)
+    {
+        var products = await _inventoryService.GetProductsAsync(filter);
+        return Ok(products);
+    }
+    
+    [HttpPost("inventory/products")]
+    public async Task<IActionResult> CreateProduct(
+        [FromBody] CreateProductDto product)
+    {
+        var created = await _inventoryService.CreateProductAsync(product);
+        return CreatedAtAction(nameof(GetProduct), new { id = created.Id }, created);
+    }
+    
+    [HttpPut("inventory/products/{id}")]
+    public async Task<IActionResult> UpdateProduct(
+        int id,
+        [FromBody] UpdateProductDto product)
+    {
+        await _inventoryService.UpdateProductAsync(id, product);
+        return NoContent();
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Ajustes de Estoque" icon="sliders">
+    **Tipos de Ajuste:**
+    - Entrada manual
+    - Saída manual
+    - Perda
+    - Quebra
+    - Inventário
+    
+    ```csharp
+    [HttpPost("inventory/adjustments")]
+    public async Task<IActionResult> CreateAdjustment(
+        [FromBody] StockAdjustmentDto adjustment)
+    {
+        var result = await _inventoryService.AdjustStockAsync(adjustment);
+        
+        // Publicar evento para auditoria
+        await _eventPublisher.PublishAsync(new StockAdjustedEvent
+        {
+            ProductId = adjustment.ProductId,
+            Quantity = adjustment.Quantity,
+            Type = adjustment.Type,
+            Reason = adjustment.Reason,
+            UserId = User.GetUserId()
+        });
+        
+        return Ok(result);
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Transferências" icon="arrows-left-right">
+    **Transferência entre Filiais:**
+    ```csharp
+    [HttpPost("inventory/transfers")]
+    public async Task<IActionResult> CreateTransfer(
+        [FromBody] StockTransferDto transfer)
+    {
+        var result = await _inventoryService.CreateTransferAsync(transfer);
+        
+        // Criar movimentação de saída na origem
+        await _inventoryService.CreateStockMovementAsync(new
+        {
+            BranchId = transfer.SourceBranchId,
+            Type = MovementType.TransferOut,
+            Items = transfer.Items
+        });
+        
+        // Criar movimentação de entrada no destino
+        await _inventoryService.CreateStockMovementAsync(new
+        {
+            BranchId = transfer.DestinationBranchId,
+            Type = MovementType.TransferIn,
+            Items = transfer.Items
+        });
+        
+        return Ok(result);
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Inventário" icon="clipboard-check">
+    **Contagem de Estoque:**
+    ```csharp
+    [HttpPost("inventory/stocktaking")]
+    public async Task<IActionResult> StartStocktaking(
+        [FromBody] StartStocktakingDto request)
+    {
+        var stocktaking = await _inventoryService.StartStocktakingAsync(
+            request.BranchId,
+            request.CategoryIds,
+            request.ScheduledDate);
+        
+        return Ok(stocktaking);
+    }
+    
+    [HttpPost("inventory/stocktaking/{id}/count")]
+    public async Task<IActionResult> RecordCount(
+        int id,
+        [FromBody] List<StockCountDto> counts)
+    {
+        await _inventoryService.RecordCountsAsync(id, counts);
+        return NoContent();
+    }
+    
+    [HttpPost("inventory/stocktaking/{id}/finalize")]
+    public async Task<IActionResult> FinalizeStocktaking(int id)
+    {
+        var result = await _inventoryService.FinalizeStocktakingAsync(id);
+        
+        // Gerar ajustes automáticos baseado nas diferenças
+        if (result.HasDifferences)
+        {
+            await _inventoryService.GenerateAdjustmentsAsync(result.Differences);
+        }
+        
+        return Ok(result);
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### 3. Vendas
+
+Gestão completa do ciclo de vendas.
+
+<Tabs>
+  <Tab title="Orçamentos">
+    **Criar Orçamento:**
+    ```typescript
+    // Angular Service
+    createQuotation(quotation: Quotation): Observable<Quotation> {
+      return this.http.post<Quotation>('/api/quotations', quotation);
+    }
+    
+    // Component
+    onSaveQuotation() {
+      this.quotationService.createQuotation(this.quotationForm.value)
+        .subscribe(result => {
+          this.messageService.add({
+            severity: 'success',
+            summary: 'Sucesso',
+            detail: `Orçamento ${result.number} criado`
+          });
+          this.router.navigate(['/sales/quotations']);
+        });
+    }
+    ```
+    
+    **API:**
+    ```csharp
+    [HttpPost("quotations")]
+    public async Task<IActionResult> CreateQuotation(
+        [FromBody] CreateQuotationDto quotation)
+    {
+        var created = await _quotationService.CreateAsync(quotation);
+        
+        // Enviar email com orçamento
+        await _emailService.SendQuotationAsync(created);
+        
+        return CreatedAtAction(nameof(GetQuotation), 
+            new { id = created.Id }, created);
+    }
+    
+    [HttpPost("quotations/{id}/convert")]
+    public async Task<IActionResult> ConvertToSale(int id)
+    {
+        var sale = await _quotationService.ConvertToSaleAsync(id);
+        return Ok(sale);
+    }
+    ```
+  </Tab>
+
+  <Tab title="Pedidos">
+    **Fluxo de Pedido:**
+    1. Criação do pedido
+    2. Aprovação (se necessário)
+    3. Separação de produtos
+    4. Faturamento
+    5. Entrega
+    
+    ```csharp
+    [HttpPost("sales/orders")]
+    public async Task<IActionResult> CreateOrder(
+        [FromBody] CreateOrderDto order)
+    {
+        var created = await _orderService.CreateAsync(order);
+        
+        // Se requer aprovação
+        if (created.RequiresApproval)
+        {
+            await _approvalService.RequestApprovalAsync(created.Id);
+        }
+        else
+        {
+            // Iniciar separação automaticamente
+            await _orderService.StartPickingAsync(created.Id);
+        }
+        
+        return CreatedAtAction(nameof(GetOrder), 
+            new { id = created.Id }, created);
+    }
+    ```
+  </Tab>
+
+  <Tab title="Devoluções">
+    **Processar Devolução:**
+    ```csharp
+    [HttpPost("sales/returns")]
+    public async Task<IActionResult> CreateReturn(
+        [FromBody] CreateSaleReturnDto saleReturn)
+    {
+        var result = await _returnService.CreateReturnAsync(saleReturn);
+        
+        // Retornar itens ao estoque
+        await _inventoryService.ReturnItemsToStockAsync(
+            saleReturn.Items);
+        
+        // Processar reembolso
+        if (saleReturn.RefundType == RefundType.Money)
+        {
+            await _paymentService.ProcessRefundAsync(
+                saleReturn.SaleId,
+                saleReturn.RefundAmount);
+        }
+        else if (saleReturn.RefundType == RefundType.Credit)
+        {
+            await _customerService.AddCreditAsync(
+                saleReturn.CustomerId,
+                saleReturn.RefundAmount);
+        }
+        
+        return Ok(result);
+    }
+    ```
+  </Tab>
+</Tabs>
+
+### 4. Compras
+
+Gestão de compras e fornecedores.
+
+```csharp
+[HttpPost("purchases/orders")]
+public async Task<IActionResult> CreatePurchaseOrder(
+    [FromBody] CreatePurchaseOrderDto purchaseOrder)
+{
+    var created = await _purchaseService.CreateOrderAsync(purchaseOrder);
+    
+    // Enviar para fornecedor
+    await _emailService.SendPurchaseOrderAsync(created);
+    
+    return CreatedAtAction(nameof(GetPurchaseOrder), 
+        new { id = created.Id }, created);
+}
+
+[HttpPost("purchases/receipts")]
+public async Task<IActionResult> ReceivePurchase(
+    [FromBody] ReceivePurchaseDto receipt)
+{
+    var result = await _purchaseService.ReceivePurchaseAsync(receipt);
+    
+    // Atualizar estoque
+    foreach (var item in receipt.Items)
+    {
+        await _inventoryService.AddStockAsync(
+            item.ProductId,
+            item.ReceivedQuantity,
+            item.UnitCost);
+    }
+    
+    // Gerar contas a pagar
+    if (receipt.GeneratePayables)
+    {
+        await _accountingService.GeneratePayablesAsync(
+            receipt.PurchaseOrderId,
+            receipt.PaymentTerms);
+    }
+    
+    return Ok(result);
+}
+```
+
+### 5. Dashboards e Relatórios
+
+<CardGroup cols={2}>
+  <Card title="Dashboard de Vendas" icon="chart-line">
+    - Vendas do dia/mês
+    - Top produtos
+    - Vendas por vendedor
+    - Comparativo com período anterior
+  </Card>
+  <Card title="Dashboard Financeiro" icon="dollar-sign">
+    - Contas a receber
+    - Contas a pagar
+    - Fluxo de caixa
+    - Inadimplência
+  </Card>
+  <Card title="Dashboard de Estoque" icon="boxes-stacked">
+    - Produtos em falta
+    - Produtos abaixo do mínimo
+    - Giro de estoque
+    - Curva ABC
+  </Card>
+  <Card title="Relatórios Customizados" icon="file-export">
+    - Relatório de vendas
+    - Relatório de compras
+    - Relatório de estoque
+    - Exportação para Excel/PDF
+  </Card>
+</CardGroup>
+
+**API de Relatórios:**
+
+```csharp
+[HttpGet("reports/sales")]
+public async Task<IActionResult> GetSalesReport(
+    [FromQuery] SalesReportFilterDto filter)
+{
+    var report = await _reportService.GenerateSalesReportAsync(filter);
+    
+    if (filter.Format == ReportFormat.Pdf)
+    {
+        var pdf = await _reportService.GeneratePdfAsync(report);
+        return File(pdf, "application/pdf", "relatorio-vendas.pdf");
+    }
+    else if (filter.Format == ReportFormat.Excel)
+    {
+        var excel = await _reportService.GenerateExcelAsync(report);
+        return File(excel, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
+            "relatorio-vendas.xlsx");
+    }
+    
+    return Ok(report);
+}
+```
+
+## Integrações
+
+### Integração com Winthor
+
+```csharp
+public class WinthorSyncService : IWinthorSyncService
+{
+    private readonly IWinthorApi _winthorApi;
+    private readonly IInventoryService _inventoryService;
+    private readonly ISaleService _saleService;
+    
+    public async Task SyncProductsAsync()
+    {
+        var produtos = await _winthorApi.GetProdutosAsync(
+            dataInicial: DateTime.Today.AddDays(-1));
+        
+        foreach (var produto in produtos)
+        {
+            await _inventoryService.UpsertProductAsync(new ProductDto
+            {
+                Code = produto.Codprod.ToString(),
+                Name = produto.Descricao,
+                Barcode = produto.Ean,
+                CostPrice = produto.Custofin,
+                SalePrice = produto.Pvenda,
+                Stock = produto.Qtestger
+            });
+        }
+    }
+    
+    public async Task SyncSalesToWinthorAsync()
+    {
+        var pendingSales = await _saleService.GetPendingSyncAsync();
+        
+        foreach (var sale in pendingSales)
+        {
+            var pedido = MapSaleToPedido(sale);
+            
+            var result = await _winthorApi.CreatePedidoAsync(pedido);
+            
+            if (result.Success)
+            {
+                await _saleService.MarkAsSyncedAsync(sale.Id, result.NumPedido);
+            }
+        }
+    }
+}
+```
+
+## Configuração
+
+### appsettings.json
+
+```json
+{
+  "ConnectionStrings": {
+    "DefaultConnection": "Host=localhost;Port=5432;Database=goposify;Username=postgres;Password=***"
+  },
+  "Jwt": {
+    "Secret": "your-secret-key-min-32-characters",
+    "Issuer": "goposify",
+    "Audience": "goposify-clients",
+    "ExpirationMinutes": 60
+  },
+  "Email": {
+    "SmtpHost": "smtp.gmail.com",
+    "SmtpPort": 587,
+    "From": "noreply@goposify.com",
+    "Username": "user@gmail.com",
+    "Password": "***"
+  },
+  "NFCe": {
+    "Ambiente": "Homologacao",
+    "CertificadoPath": "/path/to/certificate.pfx",
+    "CertificadoSenha": "***"
+  },
+  "Winthor": {
+    "ApiBaseUrl": "https://winthor-api:7003",
+    "SyncIntervalMinutes": 60
+  }
+}
+```
+
+## Deployment
+
+### Docker Compose
+
+```yaml
+services:
+  goposify-backend:
+    build:
+      context: .
+      dockerfile: pos-backend.Dockerfile
+    ports:
+      - "7002:80"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ConnectionStrings__DefaultConnection=${POSTGRES_CONN}
+    depends_on:
+      - postgres
+
+  goposify-frontend:
+    build:
+      context: ./NWERP.GoPosify.ClientApp
+      dockerfile: ../pos-front.Dockerfile
+    ports:
+      - "4200:80"
+    environment:
+      - API_URL=http://goposify-backend
+    depends_on:
+      - goposify-backend
+```
+
+## Próximos Passos
+
+<CardGroup cols={2}>
+  <Card title="Gateway" icon="door-open" href="/nwerp/components/gateway">
+    API Gateway
+  </Card>
+  <Card title="APIs" icon="code" href="/nwerp/api/goposify">
+    Referência da API
+  </Card>
+  <Card title="Deployment" icon="server" href="/nwerp/deployment/infrastructure">
+    Guias de deployment
+  </Card>
+  <Card title="Tutoriais" icon="graduation-cap" href="/nwerp/tutorials/first-sale">
+    Tutoriais passo a passo
+  </Card>
+</CardGroup>
+

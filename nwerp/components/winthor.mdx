@@ -1,0 +1,1459 @@
+---
+title: "Winthor Integration Service"
+description: "Serviço de integração com o sistema legado Winthor ERP"
+icon: "link"
+---
+
+## Introdução
+
+O Winthor Integration Service é responsável pela integração bidirecional entre o NWERP e o sistema legado Winthor ERP. Ele sincroniza dados, processa transações e automatiza operações através de jobs agendados.
+
+<CardGroup cols={2}>
+  <Card title="Sincronização" icon="arrows-rotate">
+    Sincronização bidirecional de dados
+  </Card>
+  <Card title="Background Jobs" icon="clock">
+    Processamento assíncrono com Hangfire
+  </Card>
+  <Card title="Filas" icon="list-timeline">
+    Gerenciamento de filas de processamento
+  </Card>
+  <Card title="Workers" icon="robot">
+    Workers Oracle e PostgreSQL
+  </Card>
+</CardGroup>
+
+## Arquitetura
+
+### Estrutura de Projetos
+
+<AccordionGroup>
+  <Accordion title="NWERP.Winthor.AppHost" icon="server">
+    **Camada de Apresentação** - API REST e Controllers
+    
+    **Controllers Principais:**
+    - `CadastroController` - Sincronização de cadastros
+    - `CargaTotalNuvemController` - Carga completa para nuvem
+    - `PedidosFVController` - Pedidos força de vendas
+    - `EstoqueIdealController` - Gestão de estoque ideal
+    - `MonitorController` - Monitoramento de processamento
+    - `WmsAbastecimentoController` - Abastecimento WMS
+    - `ImplantacaoController` - Implantação de novos clientes
+    
+    **Jobs Configuration:**
+    - Configuração de jobs Hangfire
+    - Agendamentos automáticos
+    - Monitoramento de execução
+  </Accordion>
+
+  <Accordion title="NWERP.Winthor.Application" icon="cogs">
+    **Camada de Aplicação** - Serviços de negócio
+    
+    Implementa a lógica de negócio para:
+    - Sincronização de dados
+    - Processamento de pedidos
+    - Cálculo de giro dia
+    - Gestão de estoque ideal
+  </Accordion>
+
+  <Accordion title="NWERP.Winthor.Contracts" icon="file-contract">
+    **Contratos** - Interfaces e DTOs
+    
+    - Interfaces de serviços
+    - Transfer Objects
+    - Entidades do Winthor
+  </Accordion>
+
+  <Accordion title="NWERP.Winthor.Domain" icon="cube">
+    **Camada de Domínio**
+    
+    - Entidades de negócio
+    - Lógica de domínio
+    - Regras de negócio
+  </Accordion>
+
+  <Accordion title="NWERP.Winthor.Infrastructure" icon="toolbox">
+    **Infraestrutura**
+    
+    - Adaptadores Oracle
+    - Adaptadores PostgreSQL
+    - Serviços de integração
+  </Accordion>
+
+  <Accordion title="NWERP.Winthor.Data.TenantDatabase" icon="database">
+    **Acesso a Dados**
+    
+    - DbContext para PostgreSQL
+    - Repositories
+    - Migrations
+  </Accordion>
+</AccordionGroup>
+
+## Funcionalidades Principais
+
+### 1. Carga Total para Nuvem
+
+Importação completa de dados do Winthor para o NWERP.
+
+```csharp
+[HttpPost("carga-total")]
+[ProducesResponseType(typeof(CargaTotalResponse), StatusCodes.Status200OK)]
+public async Task<IActionResult> ExecutarCargaTotal(
+    [FromBody] CargaTotalRequest request)
+{
+    var resultado = await _cargaTotalService.ExecutarCargaCompletaAsync(
+        request.TenantId,
+        request.Entidades);
+    
+    return Ok(resultado);
+}
+```
+
+**Entidades Sincronizadas:**
+- Produtos (PCPRODUT)
+- Clientes (PCCLIENT)
+- Fornecedores (PCFORNEC)
+- Filiais (PCFILIAL)
+- Estoque (PCEST)
+- Pedidos (PCPEDC/PCPEDI)
+- Notas Fiscais (PCNFSAID/PCNFENT)
+
+<Steps>
+  <Step title="Extração">
+    Extrai dados do Oracle Winthor usando queries otimizadas
+  </Step>
+
+  <Step title="Transformação">
+    Transforma dados do formato Winthor para o modelo NWERP
+  </Step>
+
+  <Step title="Carga">
+    Insere dados no PostgreSQL do tenant
+  </Step>
+
+  <Step title="Validação">
+    Valida integridade e consistência dos dados carregados
+  </Step>
+</Steps>
+
+### 2. Sincronização de Cadastros
+
+Mantém cadastros sincronizados entre sistemas.
+
+<Tabs>
+  <Tab title="Produtos">
+    ```csharp
+    [HttpPost("cadastro/produtos/sincronizar")]
+    public async Task<IActionResult> SincronizarProdutos(
+        [FromQuery] DateTime? dataInicial = null)
+    {
+        var resultado = await _cadastroService.SincronizarProdutosAsync(
+            dataInicial ?? DateTime.Today.AddDays(-1));
+        
+        return Ok(new
+        {
+            TotalSincronizados = resultado.Count,
+            Produtos = resultado
+        });
+    }
+    ```
+    
+    **Campos Sincronizados:**
+    - Código, descrição, unidade
+    - Preços e custos
+    - Tributação
+    - Estoque mínimo/máximo
+    - Curva ABC
+    - Status e situação fiscal
+  </Tab>
+
+  <Tab title="Clientes">
+    ```csharp
+    [HttpPost("cadastro/clientes/sincronizar")]
+    public async Task<IActionResult> SincronizarClientes(
+        [FromQuery] DateTime? dataInicial = null)
+    {
+        var resultado = await _cadastroService.SincronizarClientesAsync(
+            dataInicial ?? DateTime.Today.AddDays(-1));
+        
+        return Ok(new
+        {
+            TotalSincronizados = resultado.Count,
+            Clientes = resultado
+        });
+    }
+    ```
+    
+    **Dados Sincronizados:**
+    - Identificação (CPF/CNPJ)
+    - Endereço completo
+    - Contatos
+    - Limites de crédito
+    - Condições de pagamento
+  </Tab>
+
+  <Tab title="Estoque">
+    ```csharp
+    [HttpPost("cadastro/estoque/sincronizar")]
+    public async Task<IActionResult> SincronizarEstoque()
+    {
+        var resultado = await _cadastroService.SincronizarEstoqueAsync();
+        
+        return Ok(new
+        {
+            TotalItens = resultado.Count,
+            Estoque = resultado
+        });
+    }
+    ```
+    
+    **Informações de Estoque:**
+    - Quantidade disponível
+    - Quantidade reservada
+    - Quantidade em trânsito
+    - Custo médio
+    - Última atualização
+  </Tab>
+</Tabs>
+
+### 3. Giro Dia (Estoque Ideal)
+
+Sistema de cálculo de estoque ideal baseado em giro de vendas.
+
+#### Conceitos
+
+**Giro Dia** é a métrica que indica quantas unidades de um produto são vendidas por dia, considerando diferentes cenários e períodos históricos.
+
+**Cenário** - Conjunto de figuras (períodos) com pesos específicos para cálculo.
+
+**Figura** - Período histórico (ex: últimos 7 dias, últimos 30 dias) com peso no cálculo.
+
+#### Endpoints
+
+<AccordionGroup>
+  <Accordion title="POST /api/girodia/consolidar-vendas - Consolidar Vendas">
+    Consolida dados de vendas primárias para análise.
+    
+    ```csharp
+    [HttpPost("consolidar-vendas")]
+    public async Task<IActionResult> ConsolidarVendas(
+        [FromBody] ConsolidatePeriodDto request)
+    {
+        await _giroDiaService.ConsolidarDadosVendaAsync(
+            request.DataInicial,
+            request.DataFinal);
+        
+        return Ok(new InfoDto 
+        { 
+            Message = "Vendas consolidadas com sucesso" 
+        });
+    }
+    ```
+    
+    **Request:**
+    ```json
+    {
+      "dataInicial": "2024-01-01",
+      "dataFinal": "2024-01-31"
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="POST /api/girodia/consolidar - Calcular Giro Dia">
+    Calcula o giro dia para todos os produtos.
+    
+    ```csharp
+    [HttpPost("consolidar")]
+    public async Task<IActionResult> ConsolidarGiroDia(
+        [FromQuery] DateTime data,
+        [FromQuery] int codigoCenario)
+    {
+        await _giroDiaService.ConsolidarGiroDiaAsync(data, codigoCenario);
+        
+        return Ok(new InfoDto 
+        { 
+            Message = "Giro dia calculado com sucesso" 
+        });
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="POST /api/girodia/consolidar-filial - Calcular por Filial">
+    Calcula o giro dia específico para uma filial.
+    
+    ```csharp
+    [HttpPost("consolidar-filial")]
+    public async Task<IActionResult> ConsolidarGiroDiaPorFilial(
+        [FromQuery] DateTime data,
+        [FromQuery] string codigoFilial,
+        [FromQuery] int codigoCenario)
+    {
+        await _giroDiaService.ConsolidarGiroDiaPorFilialAsync(
+            data, 
+            codigoFilial, 
+            codigoCenario);
+        
+        return Ok(new InfoDto 
+        { 
+            Message = $"Giro dia da filial {codigoFilial} calculado" 
+        });
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="GET /api/girodia/memoria - Obter Memória de Cálculo">
+    Retorna o detalhamento do cálculo de giro para um produto.
+    
+    ```csharp
+    [HttpGet("memoria")]
+    public async Task<IActionResult> ObterMemoria(
+        [FromQuery] int codigoProduto,
+        [FromQuery] string codigoFilial,
+        [FromQuery] DateTime data,
+        [FromQuery] int codigoCenario)
+    {
+        var memoria = await _giroDiaService.ObterMemoriaProdutoFilialAsync(
+            codigoProduto,
+            codigoFilial,
+            data,
+            codigoCenario);
+        
+        return Ok(memoria);
+    }
+    ```
+    
+    **Response:**
+    ```json
+    {
+      "codigoProduto": 1234,
+      "codigoFilial": "1",
+      "data": "2024-01-31",
+      "giroCalculado": 15.5,
+      "figuras": [
+        {
+          "periodo": "Últimos 7 dias",
+          "quantidadeVendida": 105,
+          "dias": 7,
+          "giroDia": 15.0,
+          "peso": 40,
+          "contribuicao": 6.0
+        },
+        {
+          "periodo": "Últimos 30 dias",
+          "quantidadeVendida": 450,
+          "dias": 30,
+          "giroDia": 15.0,
+          "peso": 60,
+          "contribuicao": 9.0
+        }
+      ],
+      "estoqueAtual": 200,
+      "diasEstoque": 12.9,
+      "sugestaoCompra": 65
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+#### Fórmula de Cálculo
+
+```
+Giro Dia = Σ (Giro Figura × Peso Figura) / 100
+
+Onde:
+- Giro Figura = Quantidade Vendida / Dias do Período
+- Peso Figura = Percentual de importância (0-100)
+```
+
+**Exemplo:**
+
+```
+Figura 1 (7 dias): 105 unidades vendidas, peso 40%
+  Giro = 105 / 7 = 15 unidades/dia
+  Contribuição = 15 × 0.40 = 6
+
+Figura 2 (30 dias): 450 unidades vendidas, peso 60%
+  Giro = 450 / 30 = 15 unidades/dia
+  Contribuição = 15 × 0.60 = 9
+
+Giro Dia Total = 6 + 9 = 15 unidades/dia
+```
+
+### 4. Estoque ICAL (Triangulação)
+
+Sistema automático de triangulação de estoque entre filiais ICAL, FLOR e REAL.
+
+#### Fluxo de Triangulação
+
+```mermaid
+graph LR
+    A[REAL - Venda] -->|Consolidar| B[ICAL - Preparar]
+    B -->|Tributado?| C{Decisão}
+    C -->|Sim| D[Devolução ICAL]
+    D --> E[Entrada FLOR]
+    E --> F[TV10 FLOR→REAL]
+    F --> G[Entrada REAL]
+    C -->|Não| H[TV2 ICAL→REAL]
+    H --> I[Entrada REAL]
+```
+
+#### Tabelas de Controle
+
+**NWE_ESTOQUEICAL** - Consolidação de produtos
+```sql
+CREATE TABLE NWE_ESTOQUEICAL (
+    CODPROD NUMBER(6) PRIMARY KEY,
+    QTESTGER NUMBER(12,3),  -- Quantidade total gerenciada
+    QTFLORNE NUMBER(12,3),  -- Quantidade de FLOR/NE
+    QTTRANSF NUMBER(12,3),  -- Quantidade transferida
+    DTULTALT DATE           -- Data última alteração
+);
+```
+
+**NWE_ESTOQUEICALMOV** - Movimentações
+```sql
+CREATE TABLE NWE_ESTOQUEICALMOV (
+    CODFILIAL NUMBER(2),
+    NUMTRANSVENDA NUMBER(10),
+    TIPOMOVORIG VARCHAR2(2),
+    CODPROD NUMBER(6),
+    QT NUMBER(12,3),
+    NUMTRANSENT NUMBER(10),
+    TIPOMOVDEST VARCHAR2(2),
+    NUMNOTA NUMBER(10)
+);
+```
+
+#### Endpoints
+
+<CodeGroup>
+```csharp GET /api/estoqueical/estoque
+[HttpGet("estoque")]
+public async Task<IActionResult> ConsolidarEstoque()
+{
+    var resultado = await _estoqueIcalService
+        .ConsolidarEstoqueAsync();
+    
+    return Ok(resultado);
+}
+```
+
+```csharp POST /api/estoqueical/pedidovenda
+[HttpPost("pedidovenda")]
+public async Task<IActionResult> GerarPedidoVenda()
+{
+    var pedido = await _estoqueIcalService
+        .GerarPedidoVendaIcalAsync();
+    
+    return Ok(pedido);
+}
+```
+
+```csharp POST /api/estoqueical/devolucao
+[HttpPost("devolucao")]
+public async Task<IActionResult> GerarDevolucao()
+{
+    var devolucao = await _estoqueIcalService
+        .GerarDevolucaoIcalAsync();
+    
+    return Ok(devolucao);
+}
+```
+
+```csharp POST /api/estoqueical/faturar
+[HttpPost("faturar")]
+public async Task<IActionResult> Faturar()
+{
+    var nota = await _estoqueIcalService
+        .GerarFaturamentoAsync();
+    
+    return Ok(nota);
+}
+```
+</CodeGroup>
+
+### 5. Background Jobs
+
+O serviço utiliza Hangfire para processamento assíncrono.
+
+<Tabs>
+  <Tab title="Jobs Configurados">
+    ```csharp
+    public class CreateJobs
+    {
+        public static void Configure(IServiceProvider services)
+        {
+            // Sincronização de cadastros - A cada hora
+            RecurringJob.AddOrUpdate<ICadastroService>(
+                "sincronizar-produtos",
+                service => service.SincronizarProdutosAsync(null),
+                "0 * * * *"); // A cada hora
+            
+            // Consolidação de vendas - Diariamente às 01:00
+            RecurringJob.AddOrUpdate<IGiroDiaService>(
+                "consolidar-vendas",
+                service => service.ConsolidarDadosVendaAsync(
+                    DateTime.Today.AddDays(-1),
+                    DateTime.Today),
+                "0 1 * * *");
+            
+            // Cálculo de giro dia - Diariamente às 02:00
+            RecurringJob.AddOrUpdate<IGiroDiaService>(
+                "calcular-girodia",
+                service => service.ConsolidarGiroDiaAsync(
+                    DateTime.Today,
+                    1), // Cenário padrão
+                "0 2 * * *");
+            
+            // Triangulação ICAL - Diariamente às 03:00
+            RecurringJob.AddOrUpdate<IEstoqueIcalService>(
+                "triangulacao-ical",
+                service => service.ProcessarTriangulacaoAsync(),
+                "0 3 * * *");
+            
+            // Limpeza de logs - Semanalmente
+            RecurringJob.AddOrUpdate<ILimpezaLogsService>(
+                "limpeza-logs",
+                service => service.LimparLogsAntigosAsync(30),
+                "0 0 * * 0"); // Domingo às 00:00
+        }
+    }
+    ```
+  </Tab>
+
+  <Tab title="Monitoramento">
+    ```csharp
+    [HttpGet("monitor/jobs")]
+    public IActionResult ObterStatusJobs()
+    {
+        var monitoring = JobStorage.Current.GetMonitoringApi();
+        
+        var succeededJobs = monitoring.SucceededListCount();
+        var failedJobs = monitoring.FailedCount();
+        var processingJobs = monitoring.ProcessingCount();
+        var scheduledJobs = monitoring.ScheduledCount();
+        
+        return Ok(new
+        {
+            Succeeded = succeededJobs,
+            Failed = failedJobs,
+            Processing = processingJobs,
+            Scheduled = scheduledJobs,
+            Servers = monitoring.Servers()
+        });
+    }
+    ```
+    
+    **Dashboard Hangfire:**
+    
+    Acesse: `http://localhost:7003/hangfire`
+    
+    <Note>
+      O dashboard Hangfire está protegido por autenticação
+    </Note>
+  </Tab>
+
+  <Tab title="Execução Manual">
+    ```csharp
+    [HttpPost("jobs/{jobId}/trigger")]
+    public IActionResult TriggerJob(string jobId)
+    {
+        RecurringJob.Trigger(jobId);
+        
+        return Ok(new 
+        { 
+            Message = $"Job {jobId} disparado manualmente" 
+        });
+    }
+    ```
+    
+    **Exemplos:**
+    ```bash
+    # Disparar sincronização de produtos
+    POST /api/monitor/jobs/sincronizar-produtos/trigger
+    
+    # Disparar cálculo de giro dia
+    POST /api/monitor/jobs/calcular-girodia/trigger
+    ```
+  </Tab>
+</Tabs>
+
+## Workers
+
+### Oracle Worker
+
+Worker dedicado para operações no banco Oracle.
+
+```csharp
+public class OracleWorkerService : BackgroundService
+{
+    private readonly ILogger<OracleWorkerService> _logger;
+    private readonly IOracleRepository _oracleRepository;
+    private readonly IMessageBroker _messageBroker;
+    
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        _logger.LogInformation("Oracle Worker iniciado");
+        
+        await _messageBroker.SubscribeAsync<ExtrairDadosCommand>(
+            async (command) =>
+            {
+                _logger.LogInformation(
+                    "Extraindo dados da entidade {Entidade}", 
+                    command.NomeEntidade);
+                
+                var dados = await _oracleRepository.ExtrairDadosAsync(
+                    command.NomeEntidade,
+                    command.Filtros);
+                
+                await _messageBroker.PublishAsync(new DadosExtraidosEvent
+                {
+                    NomeEntidade = command.NomeEntidade,
+                    Dados = dados,
+                    TotalRegistros = dados.Count
+                });
+            },
+            stoppingToken);
+    }
+}
+```
+
+### PostgreSQL Worker
+
+Worker dedicado para operações no PostgreSQL.
+
+```csharp
+public class PostgresWorkerService : BackgroundService
+{
+    private readonly ILogger<PostgresWorkerService> _logger;
+    private readonly IPostgresRepository _postgresRepository;
+    private readonly IMessageBroker _messageBroker;
+    
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        _logger.LogInformation("PostgreSQL Worker iniciado");
+        
+        await _messageBroker.SubscribeAsync<DadosExtraidosEvent>(
+            async (evento) =>
+            {
+                _logger.LogInformation(
+                    "Carregando {Total} registros de {Entidade}",
+                    evento.TotalRegistros,
+                    evento.NomeEntidade);
+                
+                await _postgresRepository.CarregarDadosAsync(
+                    evento.NomeEntidade,
+                    evento.Dados);
+                
+                await _messageBroker.PublishAsync(new DadosCarregadosEvent
+                {
+                    NomeEntidade = evento.NomeEntidade,
+                    TotalCarregados = evento.TotalRegistros
+                });
+            },
+            stoppingToken);
+    }
+}
+```
+
+## Configuração
+
+### appsettings.json
+
+```json
+{
+  "ConnectionStrings": {
+    "WinthorOracle": "Data Source=(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=oracle-server)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=winthor)));User Id=user;Password=***;",
+    "TenantDatabase": "Host=localhost;Port=5432;Database=tenant_db;Username=postgres;Password=***",
+    "Redis": "localhost:6379",
+    "RabbitMQ": "amqp://guest:guest@localhost:5672"
+  },
+  "Hangfire": {
+    "DashboardPath": "/hangfire",
+    "WorkerCount": 5,
+    "PollingInterval": "00:00:15"
+  },
+  "Winthor": {
+    "ChunkSize": 1000,
+    "MaxRetries": 3,
+    "TimeoutSeconds": 300
+  },
+  "GiroDia": {
+    "CenarioPadrao": 1,
+    "DiasHistorico": 90
+  }
+}
+```
+
+## Deployment
+
+### Docker Compose
+
+```yaml
+services:
+  winthor:
+    build:
+      context: .
+      dockerfile: winthor.Dockerfile
+    ports:
+      - "7003:80"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ConnectionStrings__WinthorOracle=${WINTHOR_ORACLE_CONN}
+      - ConnectionStrings__TenantDatabase=${TENANT_DB_CONN}
+      - ConnectionStrings__Redis=redis:6379
+      - ConnectionStrings__RabbitMQ=amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      - redis
+      - rabbitmq
+    volumes:
+      - winthor-logs:/app/logs
+```
+
+## Monitoramento
+
+### Health Checks
+
+```csharp
+builder.Services.AddHealthChecks()
+    .AddOracle(
+        builder.Configuration.GetConnectionString("WinthorOracle"),
+        name: "winthor-oracle")
+    .AddNpgSql(
+        builder.Configuration.GetConnectionString("TenantDatabase"),
+        name: "tenant-database")
+    .AddRabbitMQ(
+        builder.Configuration.GetConnectionString("RabbitMQ"),
+        name: "rabbitmq")
+    .AddRedis(
+        builder.Configuration.GetConnectionString("Redis"),
+        name: "redis")
+    .AddHangfire(options =>
+    {
+        options.MinimumAvailableServers = 1;
+    });
+```
+
+### Métricas
+
+```csharp
+// Contador de sincronizações
+var syncCounter = Metrics.CreateCounter(
+    "winthor_sync_total",
+    "Total de sincronizações executadas",
+    new CounterConfiguration
+    {
+        LabelNames = new[] { "entidade", "status" }
+    });
+
+// Histograma de duração
+var syncDuration = Metrics.CreateHistogram(
+    "winthor_sync_duration_seconds",
+    "Duração das sincronizações",
+    new HistogramConfiguration
+    {
+        LabelNames = new[] { "entidade" }
+    });
+
+// Uso
+syncCounter.WithLabels("produtos", "success").Inc();
+using (syncDuration.WithLabels("produtos").NewTimer())
+{
+    await SincronizarProdutosAsync();
+}
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Falha na Conexão Oracle" icon="database">
+    **Sintomas:**
+    - Timeout ao conectar
+    - Erro "ORA-12154: TNS:could not resolve the connect identifier"
+    
+    **Soluções:**
+    1. Verificar string de conexão
+    2. Testar conectividade: `tnsping winthor`
+    3. Verificar firewall
+    4. Validar credenciais
+    
+    ```bash
+    # Testar conexão
+    sqlplus user/password@"(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=server)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=winthor)))"
+    ```
+  </Accordion>
+
+  <Accordion title="Job Não Executa" icon="clock">
+    **Sintomas:**
+    - Job aparece como agendado mas não executa
+    - Dashboard Hangfire não mostra atividade
+    
+    **Soluções:**
+    1. Verificar se o Hangfire Server está rodando
+    2. Checar logs de erro
+    3. Validar configuração do job
+    4. Reiniciar worker
+    
+    ```csharp
+    // Verificar status do servidor Hangfire
+    var monitoring = JobStorage.Current.GetMonitoringApi();
+    var servers = monitoring.Servers();
+    ```
+  </Accordion>
+
+  <Accordion title="Dados Inconsistentes" icon="triangle-exclamation">
+    **Sintomas:**
+    - Diferença entre Winthor e NWERP
+    - Dados faltando após sincronização
+    
+    **Soluções:**
+    1. Verificar logs de sincronização
+    2. Executar sincronização completa
+    3. Validar mapeamento de campos
+    4. Checar transações não commitadas
+    
+    ```sql
+    -- Comparar contagens
+    SELECT COUNT(*) FROM PCPRODUT WHERE DTCADASTRO > TRUNC(SYSDATE-1);
+    -- vs PostgreSQL
+    SELECT COUNT(*) FROM produtos WHERE created_at > CURRENT_DATE - INTERVAL '1 day';
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Feature Flags
+
+O Winthor Integration Service suporta diferentes modos de execução através de Feature Flags, permitindo que o mesmo container seja executado em 3 configurações distintas conforme a necessidade.
+
+### Visão Geral dos Containers
+
+```mermaid
+graph TB
+    subgraph "Winthor Service - 3 Modos de Execução"
+        A[Container Base<br/>Winthor Service]
+    end
+    
+    subgraph "Modo 1: API Only"
+        B[Feature Flag:<br/>API_ONLY=true]
+        B1[✓ REST API Endpoints]
+        B2[✓ Swagger/OpenAPI]
+        B3[✗ Background Jobs]
+        B4[✗ Workers]
+    end
+    
+    subgraph "Modo 2: Worker Only"
+        C[Feature Flag:<br/>WORKER_ONLY=true]
+        C1[✗ REST API]
+        C2[✓ Oracle Worker]
+        C3[✓ PostgreSQL Worker]
+        C4[✗ Hangfire Jobs]
+    end
+    
+    subgraph "Modo 3: Jobs Only"
+        D[Feature Flag:<br/>JOBS_ONLY=true]
+        D1[✗ REST API]
+        D2[✗ Workers]
+        D3[✓ Hangfire Server]
+        D4[✓ Scheduled Jobs]
+    end
+    
+    A --> B
+    A --> C
+    A --> D
+    
+    B --> B1
+    B --> B2
+    B --> B3
+    B --> B4
+    
+    C --> C1
+    C --> C2
+    C --> C3
+    C --> C4
+    
+    D --> D1
+    D --> D2
+    D --> D3
+    D --> D4
+    
+    style B fill:#e3f2fd
+    style C fill:#f3e5f5
+    style D fill:#e8f5e9
+```
+
+### Modos de Execução
+
+<Tabs>
+  <Tab title="API Only">
+    **Modo API REST Pura**
+    
+    Container dedicado apenas para atender requisições HTTP, sem processamento em background.
+    
+    **Características:**
+    - ✅ Endpoints REST disponíveis
+    - ✅ Swagger UI ativo
+    - ✅ Health checks
+    - ✅ Autenticação e autorização
+    - ❌ Hangfire Dashboard desabilitado
+    - ❌ Jobs não executam
+    - ❌ Workers não iniciam
+    
+    **Quando Usar:**
+    - Ambientes de alta disponibilidade com múltiplas réplicas
+    - Escalabilidade horizontal da API
+    - Separação de responsabilidades
+    - Load balancing de requisições HTTP
+    
+    **Configuração:**
+    ```yaml
+    # docker-compose.yml
+    services:
+      winthor-api:
+        image: nwerp/winthor:latest
+        environment:
+          - FEATURE_FLAG_API_ONLY=true
+          - FEATURE_FLAG_WORKER_ONLY=false
+          - FEATURE_FLAG_JOBS_ONLY=false
+          - ASPNETCORE_ENVIRONMENT=Production
+        ports:
+          - "7003:80"
+        replicas: 3  # Múltiplas réplicas para alta disponibilidade
+    ```
+    
+    **Variáveis de Ambiente:**
+    ```bash
+    FEATURE_FLAG_API_ONLY=true
+    FEATURE_FLAG_ENABLE_SWAGGER=true
+    FEATURE_FLAG_ENABLE_HEALTHCHECKS=true
+    ```
+  </Tab>
+
+  <Tab title="Worker Only">
+    **Modo Workers de Processamento**
+    
+    Container dedicado exclusivamente para workers que processam mensagens da fila RabbitMQ.
+    
+    **Características:**
+    - ❌ API REST desabilitada
+    - ❌ Portas HTTP não expostas
+    - ✅ Oracle Worker ativo
+    - ✅ PostgreSQL Worker ativo
+    - ✅ Consumidores RabbitMQ
+    - ✅ Processamento de eventos
+    - ❌ Jobs agendados não executam
+    
+    **Quando Usar:**
+    - Processamento de filas de sincronização
+    - ETL (Extract, Transform, Load) de dados
+    - Integração em tempo real com Winthor
+    - Escalabilidade de processamento assíncrono
+    
+    **Configuração:**
+    ```yaml
+    # docker-compose.yml
+    services:
+      winthor-worker:
+        image: nwerp/winthor:latest
+        environment:
+          - FEATURE_FLAG_API_ONLY=false
+          - FEATURE_FLAG_WORKER_ONLY=true
+          - FEATURE_FLAG_JOBS_ONLY=false
+          - ASPNETCORE_ENVIRONMENT=Production
+          - ConnectionStrings__WinthorOracle=${ORACLE_CONN}
+          - ConnectionStrings__RabbitMQ=${RABBITMQ_CONN}
+        # Sem exposição de portas HTTP
+        replicas: 2  # Workers paralelos para alta performance
+    ```
+    
+    **Workers Disponíveis:**
+    - `OracleWorkerService` - Extração de dados do Winthor Oracle
+    - `PostgresWorkerService` - Carga de dados no PostgreSQL
+    - `DataTransformWorker` - Transformação de dados entre sistemas
+    
+    **Exemplo de Worker:**
+    ```csharp
+    public class OracleWorkerService : BackgroundService
+    {
+        protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+        {
+            if (!_featureFlags.IsWorkerOnlyEnabled) return;
+            
+            _logger.LogInformation("Oracle Worker iniciado em modo WORKER_ONLY");
+            
+            await _messageBroker.SubscribeAsync<ExtrairDadosCommand>(
+                async (command) => await ProcessarExtracaoAsync(command),
+                stoppingToken);
+        }
+    }
+    ```
+  </Tab>
+
+  <Tab title="Jobs Only">
+    **Modo Jobs Agendados (Hangfire)**
+    
+    Container dedicado exclusivamente para executar jobs agendados via Hangfire.
+    
+    **Características:**
+    - ❌ API REST desabilitada (exceto /hangfire)
+    - ✅ Hangfire Dashboard disponível
+    - ✅ Hangfire Server ativo
+    - ✅ Jobs recorrentes executam
+    - ✅ Jobs sob demanda
+    - ❌ Workers RabbitMQ não iniciam
+    
+    **Quando Usar:**
+    - Processamentos agendados (cron jobs)
+    - Sincronizações periódicas
+    - Cálculos noturnos (giro dia)
+    - Manutenção e limpeza de dados
+    - Um único servidor Hangfire no cluster
+    
+    **Configuração:**
+    ```yaml
+    # docker-compose.yml
+    services:
+      winthor-jobs:
+        image: nwerp/winthor:latest
+        environment:
+          - FEATURE_FLAG_API_ONLY=false
+          - FEATURE_FLAG_WORKER_ONLY=false
+          - FEATURE_FLAG_JOBS_ONLY=true
+          - ASPNETCORE_ENVIRONMENT=Production
+          - Hangfire__DashboardPath=/hangfire
+        ports:
+          - "7004:80"  # Apenas para acessar dashboard
+        replicas: 1  # Apenas 1 réplica para evitar jobs duplicados
+    ```
+    
+    **Jobs Configurados:**
+    - Sincronização de produtos (a cada hora)
+    - Consolidação de vendas (01:00)
+    - Cálculo de giro dia (02:00)
+    - Triangulação ICAL (03:00)
+    - Limpeza de logs (domingo 00:00)
+    
+    **Dashboard Hangfire:**
+    ```
+    Acesso: http://localhost:7004/hangfire
+    ```
+    
+    <Warning>
+      Execute apenas 1 instância do modo JOBS_ONLY para evitar execuções duplicadas dos jobs agendados
+    </Warning>
+  </Tab>
+</Tabs>
+
+### Arquitetura de Deployment com Feature Flags
+
+```mermaid
+graph TB
+    LB[Load Balancer]
+    
+    subgraph "API Tier - Escalável"
+        API1[Winthor API 1<br/>API_ONLY=true]
+        API2[Winthor API 2<br/>API_ONLY=true]
+        API3[Winthor API 3<br/>API_ONLY=true]
+    end
+    
+    subgraph "Worker Tier - Escalável"
+        W1[Winthor Worker 1<br/>WORKER_ONLY=true]
+        W2[Winthor Worker 2<br/>WORKER_ONLY=true]
+    end
+    
+    subgraph "Jobs Tier - Singleton"
+        J1[Winthor Jobs<br/>JOBS_ONLY=true]
+    end
+    
+    subgraph "Infrastructure"
+        ORACLE[(Oracle<br/>Winthor)]
+        POSTGRES[(PostgreSQL<br/>NWERP)]
+        RABBITMQ[RabbitMQ<br/>Message Broker]
+        REDIS[Redis<br/>Cache]
+    end
+    
+    LB -->|HTTP| API1
+    LB -->|HTTP| API2
+    LB -->|HTTP| API3
+    
+    API1 -.->|Read/Write| ORACLE
+    API2 -.->|Read/Write| ORACLE
+    API3 -.->|Read/Write| ORACLE
+    
+    API1 -->|Publish| RABBITMQ
+    API2 -->|Publish| RABBITMQ
+    API3 -->|Publish| RABBITMQ
+    
+    RABBITMQ -->|Consume| W1
+    RABBITMQ -->|Consume| W2
+    
+    W1 -->|Extract| ORACLE
+    W2 -->|Extract| ORACLE
+    
+    W1 -->|Load| POSTGRES
+    W2 -->|Load| POSTGRES
+    
+    J1 -->|Scheduled| ORACLE
+    J1 -->|Scheduled| POSTGRES
+    J1 -->|Publish| RABBITMQ
+    
+    API1 -.->|Cache| REDIS
+    API2 -.->|Cache| REDIS
+    API3 -.->|Cache| REDIS
+    
+    style API1 fill:#e3f2fd
+    style API2 fill:#e3f2fd
+    style API3 fill:#e3f2fd
+    style W1 fill:#f3e5f5
+    style W2 fill:#f3e5f5
+    style J1 fill:#e8f5e9
+```
+
+### Implementação das Feature Flags
+
+<CodeGroup>
+```csharp Program.cs
+var builder = WebApplication.CreateBuilder(args);
+
+// Configurar Feature Flags
+var featureFlags = new FeatureFlags
+{
+    ApiOnly = builder.Configuration.GetValue<bool>("FEATURE_FLAG_API_ONLY"),
+    WorkerOnly = builder.Configuration.GetValue<bool>("FEATURE_FLAG_WORKER_ONLY"),
+    JobsOnly = builder.Configuration.GetValue<bool>("FEATURE_FLAG_JOBS_ONLY")
+};
+
+builder.Services.AddSingleton(featureFlags);
+
+// Configurar serviços baseado nas flags
+if (featureFlags.ApiOnly)
+{
+    builder.Services.AddControllers();
+    builder.Services.AddSwagger();
+    builder.Services.AddApiServices();
+}
+
+if (featureFlags.WorkerOnly)
+{
+    builder.Services.AddHostedService<OracleWorkerService>();
+    builder.Services.AddHostedService<PostgresWorkerService>();
+    builder.Services.AddWorkerServices();
+}
+
+if (featureFlags.JobsOnly)
+{
+    builder.Services.AddHangfire(config => config.UsePostgreSqlStorage());
+    builder.Services.AddHangfireServer();
+    builder.Services.AddJobServices();
+}
+
+var app = builder.Build();
+
+// Configurar middleware baseado nas flags
+if (featureFlags.ApiOnly)
+{
+    app.UseRouting();
+    app.UseAuthentication();
+    app.UseAuthorization();
+    app.MapControllers();
+}
+
+if (featureFlags.JobsOnly)
+{
+    app.UseHangfireDashboard("/hangfire");
+    ConfigureJobs(app.Services);
+}
+
+app.Run();
+```
+
+```csharp FeatureFlags.cs
+public class FeatureFlags
+{
+    public bool ApiOnly { get; set; }
+    public bool WorkerOnly { get; set; }
+    public bool JobsOnly { get; set; }
+    
+    public bool IsApiEnabled => ApiOnly || (!WorkerOnly && !JobsOnly);
+    public bool IsWorkerEnabled => WorkerOnly || (!ApiOnly && !JobsOnly);
+    public bool IsJobsEnabled => JobsOnly || (!ApiOnly && !WorkerOnly);
+    
+    public void Validate()
+    {
+        // Apenas uma flag pode estar ativa por vez
+        var activeFlags = new[] { ApiOnly, WorkerOnly, JobsOnly }
+            .Count(f => f);
+            
+        if (activeFlags > 1)
+        {
+            throw new InvalidOperationException(
+                "Apenas uma feature flag pode estar ativa: API_ONLY, WORKER_ONLY ou JOBS_ONLY");
+        }
+    }
+}
+```
+
+```yaml docker-compose.yml
+version: '3.8'
+
+services:
+  # API Tier - Múltiplas réplicas
+  winthor-api:
+    image: nwerp/winthor:latest
+    environment:
+      FEATURE_FLAG_API_ONLY: "true"
+      FEATURE_FLAG_WORKER_ONLY: "false"
+      FEATURE_FLAG_JOBS_ONLY: "false"
+    ports:
+      - "7003-7005:80"
+    deploy:
+      replicas: 3
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+    depends_on:
+      - oracle
+      - postgres
+      - rabbitmq
+      - redis
+
+  # Worker Tier - Múltiplas réplicas
+  winthor-worker:
+    image: nwerp/winthor:latest
+    environment:
+      FEATURE_FLAG_API_ONLY: "false"
+      FEATURE_FLAG_WORKER_ONLY: "true"
+      FEATURE_FLAG_JOBS_ONLY: "false"
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+    depends_on:
+      - oracle
+      - postgres
+      - rabbitmq
+
+  # Jobs Tier - Singleton
+  winthor-jobs:
+    image: nwerp/winthor:latest
+    environment:
+      FEATURE_FLAG_API_ONLY: "false"
+      FEATURE_FLAG_WORKER_ONLY: "false"
+      FEATURE_FLAG_JOBS_ONLY: "true"
+    ports:
+      - "7006:80"  # Dashboard Hangfire
+    deploy:
+      replicas: 1  # Apenas 1 instância
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+    depends_on:
+      - postgres
+      - rabbitmq
+```
+
+```bash Kubernetes ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: winthor-feature-flags
+  namespace: nwerp
+data:
+  # API Configuration
+  api.flags: |
+    FEATURE_FLAG_API_ONLY=true
+    FEATURE_FLAG_WORKER_ONLY=false
+    FEATURE_FLAG_JOBS_ONLY=false
+  
+  # Worker Configuration
+  worker.flags: |
+    FEATURE_FLAG_API_ONLY=false
+    FEATURE_FLAG_WORKER_ONLY=true
+    FEATURE_FLAG_JOBS_ONLY=false
+  
+  # Jobs Configuration
+  jobs.flags: |
+    FEATURE_FLAG_API_ONLY=false
+    FEATURE_FLAG_WORKER_ONLY=false
+    FEATURE_FLAG_JOBS_ONLY=true
+```
+</CodeGroup>
+
+### Benefícios da Arquitetura com Feature Flags
+
+<AccordionGroup>
+  <Accordion title="Escalabilidade Independente" icon="chart-line">
+    Cada tier pode escalar independentemente conforme a demanda:
+    
+    - **API Tier**: Escala horizontalmente para atender mais requisições HTTP
+    - **Worker Tier**: Escala para processar mais mensagens em paralelo
+    - **Jobs Tier**: Mantém-se como singleton para evitar duplicação
+    
+    ```bash
+    # Escalar APIs para 5 réplicas
+    docker-compose up --scale winthor-api=5
+    
+    # Escalar Workers para 4 réplicas
+    docker-compose up --scale winthor-worker=4
+    ```
+  </Accordion>
+
+  <Accordion title="Isolamento de Recursos" icon="layer-group">
+    Recursos computacionais podem ser alocados especificamente:
+    
+    - **API**: Mais CPU para processamento de requests
+    - **Worker**: Mais memória para ETL de grandes volumes
+    - **Jobs**: Recursos balanceados para jobs agendados
+    
+    ```yaml
+    # API - CPU intensiva
+    resources:
+      limits:
+        cpus: '2'
+        memory: 512M
+    
+    # Worker - Memória intensiva
+    resources:
+      limits:
+        cpus: '1'
+        memory: 2G
+    ```
+  </Accordion>
+
+  <Accordion title="Deployment Zero-Downtime" icon="rotate">
+    Atualizações podem ser feitas sem downtime:
+    
+    1. Atualizar Workers sem afetar APIs
+    2. Atualizar APIs usando rolling update
+    3. Atualizar Jobs fora do horário de pico
+    
+    ```bash
+    # Rolling update apenas das APIs
+    kubectl rollout restart deployment winthor-api
+    
+    # Workers continuam processando
+    # Jobs continuam executando
+    ```
+  </Accordion>
+
+  <Accordion title="Troubleshooting Facilitado" icon="magnifying-glass">
+    Problemas podem ser isolados por tier:
+    
+    - **API lenta**: Escalar API tier ou otimizar endpoints
+    - **Fila crescendo**: Adicionar mais workers
+    - **Job falhando**: Debugar apenas o container de jobs
+    
+    ```bash
+    # Ver logs apenas das APIs
+    docker logs winthor-api-1
+    
+    # Ver logs apenas dos Workers
+    docker logs winthor-worker-1
+    
+    # Ver logs apenas dos Jobs
+    docker logs winthor-jobs
+    ```
+  </Accordion>
+
+  <Accordion title="Custo Otimizado" icon="dollar-sign">
+    Recursos podem ser alocados eficientemente:
+    
+    - APIs: Sempre ativas (alta disponibilidade)
+    - Workers: Escalam sob demanda (autoscaling)
+    - Jobs: Recursos mínimos (apenas agendamentos)
+    
+    **Economia estimada**: 30-40% em custos de infraestrutura
+  </Accordion>
+</AccordionGroup>
+
+### Monitoramento por Tier
+
+<Tabs>
+  <Tab title="Métricas API">
+    ```csharp
+    // Métricas específicas do tier API
+    var apiRequestCounter = Metrics.CreateCounter(
+        "winthor_api_requests_total",
+        "Total de requests HTTP",
+        new CounterConfiguration
+        {
+            LabelNames = new[] { "endpoint", "method", "status" }
+        });
+    
+    var apiResponseTime = Metrics.CreateHistogram(
+        "winthor_api_response_seconds",
+        "Tempo de resposta da API",
+        new HistogramConfiguration
+        {
+            LabelNames = new[] { "endpoint" }
+        });
+    ```
+  </Tab>
+
+  <Tab title="Métricas Worker">
+    ```csharp
+    // Métricas específicas do tier Worker
+    var workerMessagesProcessed = Metrics.CreateCounter(
+        "winthor_worker_messages_processed_total",
+        "Total de mensagens processadas",
+        new CounterConfiguration
+        {
+            LabelNames = new[] { "worker_type", "status" }
+        });
+    
+    var workerQueueSize = Metrics.CreateGauge(
+        "winthor_worker_queue_size",
+        "Tamanho da fila de processamento",
+        new GaugeConfiguration
+        {
+            LabelNames = new[] { "queue_name" }
+        });
+    ```
+  </Tab>
+
+  <Tab title="Métricas Jobs">
+    ```csharp
+    // Métricas específicas do tier Jobs
+    var jobsExecuted = Metrics.CreateCounter(
+        "winthor_jobs_executed_total",
+        "Total de jobs executados",
+        new CounterConfiguration
+        {
+            LabelNames = new[] { "job_name", "status" }
+        });
+    
+    var jobDuration = Metrics.CreateHistogram(
+        "winthor_job_duration_seconds",
+        "Duração de execução dos jobs",
+        new HistogramConfiguration
+        {
+            LabelNames = new[] { "job_name" }
+        });
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+  **Recomendação**: Use sempre as Feature Flags para deployments em produção. Isso permite melhor controle, escalabilidade e troubleshooting do sistema.
+</Note>
+
+## Próximos Passos
+
+<CardGroup cols={2}>
+  <Card title="GoPosify" icon="cash-register" href="/nwerp/components/goposify">
+    Sistema de PDV
+  </Card>
+  <Card title="Gateway" icon="door-open" href="/nwerp/components/gateway">
+    API Gateway
+  </Card>
+  <Card title="APIs" icon="code" href="/nwerp/api/winthor">
+    Referência da API
+  </Card>
+  <Card title="Deployment" icon="server" href="/nwerp/deployment/infrastructure">
+    Guias de deployment
+  </Card>
+</CardGroup>
+

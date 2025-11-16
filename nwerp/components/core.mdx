@@ -1,0 +1,986 @@
+---
+title: "Core Components"
+description: "Componentes compartilhados e infraestrutura comum do NWERP"
+icon: "cube"
+---
+
+## Introdução
+
+Os Core Components do NWERP são bibliotecas compartilhadas que fornecem funcionalidades comuns a todos os microserviços do sistema. Estes componentes garantem consistência, reduzem duplicação de código e facilitam a manutenção.
+
+<CardGroup cols={2}>
+  <Card title="Infrastructure" icon="toolbox">
+    Utilitários e adaptadores de infraestrutura
+  </Card>
+  <Card title="Abstractions" icon="shapes">
+    Contratos e interfaces compartilhadas
+  </Card>
+  <Card title="Bootstrappers" icon="play">
+    Inicialização e configuração de serviços
+  </Card>
+  <Card title="Service Defaults" icon="gear">
+    Configurações padrão e observabilidade
+  </Card>
+</CardGroup>
+
+## NWERP.Infrastructure
+
+Biblioteca principal contendo adaptadores e utilitários de infraestrutura.
+
+### Adapters
+
+<AccordionGroup>
+  <Accordion title="Caching" icon="bolt">
+    Abstração para cache distribuído usando Redis.
+    
+    **Interface:**
+    ```csharp
+    public interface ICacheService
+    {
+        Task<T?> GetAsync<T>(string key, CancellationToken cancellationToken = default);
+        Task SetAsync<T>(string key, T value, TimeSpan? expiration = null, 
+            CancellationToken cancellationToken = default);
+        Task RemoveAsync(string key, CancellationToken cancellationToken = default);
+        Task<bool> ExistsAsync(string key, CancellationToken cancellationToken = default);
+    }
+    ```
+    
+    **Uso:**
+    ```csharp
+    // Injeção de dependência
+    public class TenantService
+    {
+        private readonly ICacheService _cache;
+        
+        public TenantService(ICacheService cache)
+        {
+            _cache = cache;
+        }
+        
+        public async Task<TenantDto> GetTenantAsync(string tenantId)
+        {
+            var cacheKey = $"tenant:{tenantId}";
+            
+            // Tentar obter do cache
+            var cached = await _cache.GetAsync<TenantDto>(cacheKey);
+            if (cached != null)
+                return cached;
+            
+            // Buscar do banco
+            var tenant = await _repository.GetByIdAsync(tenantId);
+            var dto = _mapper.Map<TenantDto>(tenant);
+            
+            // Armazenar no cache por 30 minutos
+            await _cache.SetAsync(cacheKey, dto, TimeSpan.FromMinutes(30));
+            
+            return dto;
+        }
+    }
+    ```
+    
+    <Tip>
+      Use cache para dados que são frequentemente lidos mas raramente modificados
+    </Tip>
+  </Accordion>
+
+  <Accordion title="Messaging" icon="message">
+    Abstração para mensageria usando RabbitMQ via MassTransit.
+    
+    **Publicação de Eventos:**
+    ```csharp
+    public interface IEventPublisher
+    {
+        Task PublishAsync<T>(T message, CancellationToken cancellationToken = default) 
+            where T : class;
+    }
+    
+    // Uso
+    await _eventPublisher.PublishAsync(new TenantCreatedEvent
+    {
+        TenantId = tenant.Id,
+        Name = tenant.Name,
+        CreatedAt = DateTime.UtcNow
+    });
+    ```
+    
+    **Consumidores:**
+    ```csharp
+    public class TenantCreatedConsumer : IConsumer<TenantCreatedEvent>
+    {
+        private readonly ILogger<TenantCreatedConsumer> _logger;
+        private readonly IDatabaseService _databaseService;
+        
+        public TenantCreatedConsumer(
+            ILogger<TenantCreatedConsumer> logger,
+            IDatabaseService databaseService)
+        {
+            _logger = logger;
+            _databaseService = databaseService;
+        }
+        
+        public async Task Consume(ConsumeContext<TenantCreatedEvent> context)
+        {
+            _logger.LogInformation(
+                "Processando criação de tenant {TenantId}", 
+                context.Message.TenantId);
+            
+            try
+            {
+                await _databaseService.CreateTenantDatabaseAsync(
+                    context.Message.TenantId);
+                    
+                _logger.LogInformation(
+                    "Database criado para tenant {TenantId}", 
+                    context.Message.TenantId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, 
+                    "Erro ao criar database para tenant {TenantId}", 
+                    context.Message.TenantId);
+                throw;
+            }
+        }
+    }
+    ```
+    
+    **Configuração:**
+    ```csharp
+    services.AddMassTransit(x =>
+    {
+        x.AddConsumer<TenantCreatedConsumer>();
+        
+        x.UsingRabbitMq((context, cfg) =>
+        {
+            cfg.Host("rabbitmq://localhost", h =>
+            {
+                h.Username("guest");
+                h.Password("guest");
+            });
+            
+            cfg.ConfigureEndpoints(context);
+        });
+    });
+    ```
+  </Accordion>
+
+  <Accordion title="Data" icon="database">
+    Abstrações para acesso a dados e Entity Framework Core.
+    
+    **Base DbContext:**
+    ```csharp
+    public abstract class BaseDbContext : DbContext
+    {
+        protected BaseDbContext(DbContextOptions options) : base(options)
+        {
+        }
+        
+        public override async Task<int> SaveChangesAsync(
+            CancellationToken cancellationToken = default)
+        {
+            // Adicionar timestamps automaticamente
+            var entries = ChangeTracker.Entries()
+                .Where(e => e.Entity is IAuditableEntity && 
+                           (e.State == EntityState.Added || 
+                            e.State == EntityState.Modified));
+            
+            foreach (var entry in entries)
+            {
+                var entity = (IAuditableEntity)entry.Entity;
+                
+                if (entry.State == EntityState.Added)
+                {
+                    entity.CreatedAt = DateTime.UtcNow;
+                }
+                
+                entity.UpdatedAt = DateTime.UtcNow;
+            }
+            
+            return await base.SaveChangesAsync(cancellationToken);
+        }
+    }
+    ```
+    
+    **Repository Base:**
+    ```csharp
+    public abstract class Repository<T> : IRepository<T> 
+        where T : class, IAggregateRoot
+    {
+        protected readonly DbContext _context;
+        protected readonly DbSet<T> _dbSet;
+        
+        protected Repository(DbContext context)
+        {
+            _context = context;
+            _dbSet = context.Set<T>();
+        }
+        
+        public virtual async Task<T?> GetByIdAsync(string id)
+        {
+            return await _dbSet.FindAsync(id);
+        }
+        
+        public virtual async Task<IEnumerable<T>> GetAllAsync()
+        {
+            return await _dbSet.ToListAsync();
+        }
+        
+        public virtual async Task AddAsync(T entity)
+        {
+            await _dbSet.AddAsync(entity);
+        }
+        
+        public virtual Task UpdateAsync(T entity)
+        {
+            _dbSet.Update(entity);
+            return Task.CompletedTask;
+        }
+        
+        public virtual Task DeleteAsync(T entity)
+        {
+            _dbSet.Remove(entity);
+            return Task.CompletedTask;
+        }
+    }
+    ```
+    
+    **Unit of Work:**
+    ```csharp
+    public interface IUnitOfWork : IDisposable
+    {
+        Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
+        Task BeginTransactionAsync();
+        Task CommitTransactionAsync();
+        Task RollbackTransactionAsync();
+    }
+    
+    public class UnitOfWork : IUnitOfWork
+    {
+        private readonly DbContext _context;
+        private IDbContextTransaction? _transaction;
+        
+        public UnitOfWork(DbContext context)
+        {
+            _context = context;
+        }
+        
+        public async Task<int> SaveChangesAsync(
+            CancellationToken cancellationToken = default)
+        {
+            return await _context.SaveChangesAsync(cancellationToken);
+        }
+        
+        public async Task BeginTransactionAsync()
+        {
+            _transaction = await _context.Database.BeginTransactionAsync();
+        }
+        
+        public async Task CommitTransactionAsync()
+        {
+            try
+            {
+                await SaveChangesAsync();
+                await _transaction?.CommitAsync()!;
+            }
+            finally
+            {
+                _transaction?.Dispose();
+                _transaction = null;
+            }
+        }
+        
+        public async Task RollbackTransactionAsync()
+        {
+            try
+            {
+                await _transaction?.RollbackAsync()!;
+            }
+            finally
+            {
+                _transaction?.Dispose();
+                _transaction = null;
+            }
+        }
+        
+        public void Dispose()
+        {
+            _transaction?.Dispose();
+            _context.Dispose();
+        }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Resilience" icon="shield">
+    Implementação de padrões de resiliência usando Polly.
+    
+    **Políticas de Retry:**
+    ```csharp
+    public static class ResiliencePolicies
+    {
+        public static IAsyncPolicy<HttpResponseMessage> GetRetryPolicy()
+        {
+            return HttpPolicyExtensions
+                .HandleTransientHttpError()
+                .OrResult(msg => msg.StatusCode == HttpStatusCode.TooManyRequests)
+                .WaitAndRetryAsync(
+                    retryCount: 3,
+                    sleepDurationProvider: retryAttempt => 
+                        TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)),
+                    onRetry: (outcome, timespan, retryAttempt, context) =>
+                    {
+                        Log.Warning(
+                            "Retry {RetryAttempt} após {Delay}s devido a {Result}",
+                            retryAttempt, timespan.TotalSeconds, outcome.Result?.StatusCode);
+                    });
+        }
+        
+        public static IAsyncPolicy<HttpResponseMessage> GetCircuitBreakerPolicy()
+        {
+            return HttpPolicyExtensions
+                .HandleTransientHttpError()
+                .CircuitBreakerAsync(
+                    handledEventsAllowedBeforeBreaking: 5,
+                    durationOfBreak: TimeSpan.FromSeconds(30),
+                    onBreak: (outcome, duration) =>
+                    {
+                        Log.Error("Circuit breaker aberto por {Duration}s", 
+                            duration.TotalSeconds);
+                    },
+                    onReset: () =>
+                    {
+                        Log.Information("Circuit breaker resetado");
+                    });
+        }
+        
+        public static IAsyncPolicy<HttpResponseMessage> GetTimeoutPolicy()
+        {
+            return Policy
+                .TimeoutAsync<HttpResponseMessage>(
+                    TimeSpan.FromSeconds(10),
+                    onTimeoutAsync: (context, timespan, task) =>
+                    {
+                        Log.Warning("Timeout de {Timeout}s excedido", 
+                            timespan.TotalSeconds);
+                        return Task.CompletedTask;
+                    });
+        }
+        
+        public static IAsyncPolicy<HttpResponseMessage> GetCombinedPolicy()
+        {
+            return Policy.WrapAsync(
+                GetRetryPolicy(),
+                GetCircuitBreakerPolicy(),
+                GetTimeoutPolicy());
+        }
+    }
+    ```
+    
+    **Uso:**
+    ```csharp
+    services.AddHttpClient<IExternalApiClient, ExternalApiClient>()
+        .AddPolicyHandler(ResiliencePolicies.GetRetryPolicy())
+        .AddPolicyHandler(ResiliencePolicies.GetCircuitBreakerPolicy())
+        .AddPolicyHandler(ResiliencePolicies.GetTimeoutPolicy());
+    ```
+  </Accordion>
+
+  <Accordion title="DependencyInjection" icon="plug">
+    Extensões e helpers para registro de serviços.
+    
+    ```csharp
+    public static class ServiceCollectionExtensions
+    {
+        public static IServiceCollection AddInfrastructure(
+            this IServiceCollection services,
+            IConfiguration configuration)
+        {
+            // Cache
+            services.AddStackExchangeRedisCache(options =>
+            {
+                options.Configuration = configuration
+                    .GetConnectionString("Redis");
+            });
+            services.AddSingleton<ICacheService, RedisCacheService>();
+            
+            // Messaging
+            services.AddMassTransit(x =>
+            {
+                x.UsingRabbitMq((context, cfg) =>
+                {
+                    cfg.Host(configuration.GetConnectionString("RabbitMQ"));
+                    cfg.ConfigureEndpoints(context);
+                });
+            });
+            
+            // Http Clients
+            services.AddHttpClient();
+            
+            return services;
+        }
+        
+        public static IServiceCollection AddRepositories(
+            this IServiceCollection services)
+        {
+            services.Scan(scan => scan
+                .FromAssemblyOf<IRepository>()
+                .AddClasses(classes => classes.AssignableTo(typeof(IRepository<>)))
+                .AsImplementedInterfaces()
+                .WithScopedLifetime());
+            
+            return services;
+        }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Container" icon="box">
+    Utilitários para trabalhar com containers Docker.
+    
+    ```csharp
+    public interface IContainerService
+    {
+        Task<string> CreateContainerAsync(string image, 
+            Dictionary<string, string> environmentVariables);
+        Task StartContainerAsync(string containerId);
+        Task StopContainerAsync(string containerId);
+        Task RemoveContainerAsync(string containerId);
+        Task<ContainerStatus> GetContainerStatusAsync(string containerId);
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## NWERP.ApplicationServices.Abstractions
+
+Contratos e DTOs compartilhados entre serviços.
+
+### APIs
+
+Interfaces para comunicação entre microserviços usando Refit.
+
+<CodeGroup>
+```csharp IBackOfficeMultiTenantApi
+public interface IBackOfficeMultiTenantApi
+{
+    [Get("/api/tenants/{id}")]
+    Task<TenantDto> GetTenantAsync(string id);
+    
+    [Get("/api/tenants")]
+    Task<PagedResult<TenantDto>> GetTenantsAsync(
+        [Query] int page = 1, 
+        [Query] int pageSize = 10);
+    
+    [Post("/api/tenants")]
+    Task<TenantDto> CreateTenantAsync([Body] CreateTenantRequest request);
+    
+    [Put("/api/tenants/{id}")]
+    Task<TenantDto> UpdateTenantAsync(
+        string id, 
+        [Body] UpdateTenantRequest request);
+    
+    [Delete("/api/tenants/{id}")]
+    Task DeleteTenantAsync(string id);
+}
+```
+
+```csharp IGatewayDatabaseMigrationApi
+public interface IGatewayDatabaseMigrationApi
+{
+    [Post("/api/database/migrations/apply")]
+    Task<MigrationResult> ApplyMigrationsAsync(
+        [Body] ApplyMigrationsRequest request);
+    
+    [Get("/api/database/migrations/pending")]
+    Task<List<string>> GetPendingMigrationsAsync([Query] string tenantId);
+    
+    [Get("/api/database/migrations/applied")]
+    Task<List<MigrationInfo>> GetAppliedMigrationsAsync(
+        [Query] string tenantId);
+}
+```
+
+```csharp IGatewayTenantImportApi
+public interface IGatewayTenantImportApi
+{
+    [Post("/api/tenants/import")]
+    Task<ImportResult> ImportTenantDataAsync(
+        [Body] ImportTenantDataRequest request);
+    
+    [Get("/api/tenants/import/{importId}/status")]
+    Task<ImportStatus> GetImportStatusAsync(string importId);
+}
+```
+</CodeGroup>
+
+### Commands
+
+Comandos para operações de escrita.
+
+<CodeGroup>
+```csharp CreateTenantCommandRequest
+public record CreateTenantCommandRequest
+{
+    public string Name { get; init; } = string.Empty;
+    public string PlanId { get; init; } = string.Empty;
+    public string Email { get; init; } = string.Empty;
+    public Dictionary<string, string> Metadata { get; init; } = new();
+}
+```
+
+```csharp ApplyDatabaseMigrationsCommandRequest
+public record ApplyDatabaseMigrationsCommandRequest
+{
+    public string TenantId { get; init; } = string.Empty;
+    public string DatabaseConnectionString { get; init; } = string.Empty;
+    public bool RunSeeders { get; init; } = false;
+}
+```
+
+```csharp GenericCommandResponse
+public record GenericCommandResponse
+{
+    public bool Success { get; init; }
+    public string Message { get; init; } = string.Empty;
+    public Dictionary<string, string[]> Errors { get; init; } = new();
+    public object? Data { get; init; }
+}
+```
+</CodeGroup>
+
+### Transfer Objects (TOs)
+
+<CodeGroup>
+```csharp TenantDto
+public record TenantDto
+{
+    public string Id { get; init; } = string.Empty;
+    public string Name { get; init; } = string.Empty;
+    public string Email { get; init; } = string.Empty;
+    public PlanDto Plan { get; init; } = null!;
+    public List<DatabaseDto> Databases { get; init; } = new();
+    public DateTime CreatedAt { get; init; }
+    public DateTime UpdatedAt { get; init; }
+    public TenantStatus Status { get; init; }
+}
+```
+
+```csharp DatabaseDto
+public record DatabaseDto
+{
+    public string Id { get; init; } = string.Empty;
+    public string Name { get; init; } = string.Empty;
+    public string ConnectionString { get; init; } = string.Empty;
+    public string Provider { get; init; } = string.Empty;
+    public DatabaseStatus Status { get; init; }
+    public DateTime CreatedAt { get; init; }
+}
+```
+
+```csharp PagedResult<T>
+public record PagedResult<T>
+{
+    public List<T> Items { get; init; } = new();
+    public int Page { get; init; }
+    public int PageSize { get; init; }
+    public int TotalCount { get; init; }
+    public int TotalPages => (int)Math.Ceiling((double)TotalCount / PageSize);
+    public bool HasPreviousPage => Page > 1;
+    public bool HasNextPage => Page < TotalPages;
+}
+```
+</CodeGroup>
+
+## NWERP.Infrastructure.Bootstrappers
+
+Componentes para inicialização e configuração de serviços.
+
+### BootstrapperRunner
+
+Orquestrador de bootstrappers.
+
+```csharp
+public interface IBootstrapper
+{
+    string Name { get; }
+    int Order { get; }
+    Task RunAsync(CancellationToken cancellationToken = default);
+}
+
+public class BootstrapperRunner
+{
+    private readonly IEnumerable<IBootstrapper> _bootstrappers;
+    private readonly ILogger<BootstrapperRunner> _logger;
+    
+    public BootstrapperRunner(
+        IEnumerable<IBootstrapper> bootstrappers,
+        ILogger<BootstrapperRunner> logger)
+    {
+        _bootstrappers = bootstrappers.OrderBy(b => b.Order);
+        _logger = logger;
+    }
+    
+    public async Task RunAllAsync(CancellationToken cancellationToken = default)
+    {
+        foreach (var bootstrapper in _bootstrappers)
+        {
+            _logger.LogInformation(
+                "Executando bootstrapper: {Name}", 
+                bootstrapper.Name);
+            
+            try
+            {
+                await bootstrapper.RunAsync(cancellationToken);
+                
+                _logger.LogInformation(
+                    "Bootstrapper {Name} executado com sucesso", 
+                    bootstrapper.Name);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, 
+                    "Erro ao executar bootstrapper {Name}", 
+                    bootstrapper.Name);
+                throw;
+            }
+        }
+    }
+}
+```
+
+### DatabaseDDLBootstrapper
+
+Criação e migração de databases.
+
+```csharp
+public class DatabaseDDLBootstrapper : IBootstrapper
+{
+    public string Name => "Database DDL";
+    public int Order => 1;
+    
+    private readonly IServiceProvider _serviceProvider;
+    private readonly ILogger<DatabaseDDLBootstrapper> _logger;
+    
+    public async Task RunAsync(CancellationToken cancellationToken = default)
+    {
+        using var scope = _serviceProvider.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        
+        _logger.LogInformation("Aplicando migrations...");
+        
+        await context.Database.MigrateAsync(cancellationToken);
+        
+        _logger.LogInformation("Migrations aplicadas com sucesso");
+        
+        // Seed inicial se necessário
+        if (!await context.Tenants.AnyAsync(cancellationToken))
+        {
+            _logger.LogInformation("Executando seed inicial...");
+            await SeedInitialDataAsync(context, cancellationToken);
+        }
+    }
+    
+    private async Task SeedInitialDataAsync(
+        ApplicationDbContext context, 
+        CancellationToken cancellationToken)
+    {
+        // Seed de dados iniciais
+        context.Plans.Add(new Plan 
+        { 
+            Name = "Basic", 
+            MaxDatabases = 1,
+            MaxUsers = 10 
+        });
+        
+        await context.SaveChangesAsync(cancellationToken);
+    }
+}
+```
+
+### RabbitMQVHostBootstrapper
+
+Configuração de VHosts e permissões no RabbitMQ.
+
+```csharp
+public class RabbitMQVHostBootstrapper : IBootstrapper
+{
+    public string Name => "RabbitMQ VHost";
+    public int Order => 2;
+    
+    private readonly RabbitMQAdminClient _adminClient;
+    private readonly ILogger<RabbitMQVHostBootstrapper> _logger;
+    
+    public async Task RunAsync(CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Configurando RabbitMQ...");
+        
+        // Criar VHost
+        await _adminClient.CreateVHostAsync("nwerp");
+        
+        // Configurar permissões
+        await _adminClient.SetPermissionsAsync(
+            "nwerp", 
+            "guest", 
+            ".*", ".*", ".*");
+        
+        // Criar exchanges
+        await _adminClient.CreateExchangeAsync(
+            "nwerp", 
+            "tenant.events", 
+            "topic");
+        
+        _logger.LogInformation("RabbitMQ configurado com sucesso");
+    }
+}
+```
+
+## NWERP.Infrastructure.ServiceDefaults
+
+Configurações padrão para todos os serviços.
+
+```csharp
+public static class ServiceDefaultsExtensions
+{
+    public static IServiceCollection AddServiceDefaults(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        // Logging
+        services.AddLogging(logging =>
+        {
+            logging.ClearProviders();
+            logging.AddConsole();
+            logging.AddDebug();
+            logging.AddApplicationInsights();
+        });
+        
+        // Health Checks
+        services.AddHealthChecks()
+            .AddCheck("self", () => HealthCheckResult.Healthy());
+        
+        // OpenTelemetry
+        services.AddOpenTelemetry()
+            .WithMetrics(metrics =>
+            {
+                metrics
+                    .AddAspNetCoreInstrumentation()
+                    .AddHttpClientInstrumentation()
+                    .AddRuntimeInstrumentation();
+            })
+            .WithTracing(tracing =>
+            {
+                tracing
+                    .AddAspNetCoreInstrumentation()
+                    .AddHttpClientInstrumentation()
+                    .AddEntityFrameworkCoreInstrumentation();
+            });
+        
+        // Resilience
+        services.AddHttpClient()
+            .AddPolicyHandler(ResiliencePolicies.GetCombinedPolicy());
+        
+        return services;
+    }
+    
+    public static IApplicationBuilder UseServiceDefaults(
+        this IApplicationBuilder app)
+    {
+        app.UseHealthChecks("/health");
+        app.UseHealthChecks("/health/ready");
+        app.UseHealthChecks("/health/live");
+        
+        return app;
+    }
+}
+```
+
+## HTTP AMQP Broker
+
+Serviço que expõe funcionalidades do RabbitMQ via HTTP.
+
+### Publicação de Mensagens
+
+```csharp
+[ApiController]
+[Route("api/[controller]")]
+public class PublishController : ControllerBase
+{
+    private readonly IPublishEndpoint _publishEndpoint;
+    
+    [HttpPost]
+    public async Task<IActionResult> Publish(
+        [FromBody] PublishMessageRequest request)
+    {
+        var messageType = Type.GetType(request.MessageType);
+        if (messageType == null)
+            return BadRequest("Invalid message type");
+        
+        var message = JsonSerializer.Deserialize(
+            request.MessagePayload, 
+            messageType);
+        
+        await _publishEndpoint.Publish(message);
+        
+        return Ok(new { Success = true });
+    }
+}
+```
+
+### RPC via HTTP
+
+```csharp
+[ApiController]
+[Route("api/[controller]")]
+public class RpcController : ControllerBase
+{
+    private readonly IRequestClient<TenantQuery> _requestClient;
+    
+    [HttpPost("tenant")]
+    public async Task<IActionResult> GetTenant(
+        [FromBody] TenantQuery query)
+    {
+        var response = await _requestClient.GetResponse<TenantResponse>(query);
+        return Ok(response.Message);
+    }
+}
+```
+
+## Exemplo de Uso Completo
+
+Aqui está um exemplo de como usar os Core Components em um novo microserviço:
+
+<Steps>
+  <Step title="Adicionar Referências">
+    ```xml
+    <ItemGroup>
+      <ProjectReference Include="..\core-components\NWERP.Infrastructure\NWERP.Infrastructure.csproj" />
+      <ProjectReference Include="..\core-components\NWERP.ApplicationServices.Abstractions\NWERP.ApplicationServices.Abstractions.csproj" />
+      <ProjectReference Include="..\core-components\NWERP.Infrastructure.ServiceDefaults\NWERP.Infrastructure.ServiceDefaults.csproj" />
+    </ItemGroup>
+    ```
+  </Step>
+
+  <Step title="Configurar Serviços">
+    ```csharp
+    // Program.cs
+    var builder = WebApplication.CreateBuilder(args);
+    
+    // Service Defaults
+    builder.Services.AddServiceDefaults(builder.Configuration);
+    
+    // Infrastructure
+    builder.Services.AddInfrastructure(builder.Configuration);
+    
+    // Database
+    builder.Services.AddDbContext<MyDbContext>(options =>
+        options.UseNpgsql(builder.Configuration.GetConnectionString("Database")));
+    
+    // Repositories
+    builder.Services.AddRepositories();
+    
+    // API Clients
+    builder.Services.AddRefitClient<IBackOfficeMultiTenantApi>()
+        .ConfigureHttpClient(c => c.BaseAddress = 
+            new Uri(builder.Configuration["Services:Backoffice"]!));
+    
+    var app = builder.Build();
+    
+    // Use Service Defaults
+    app.UseServiceDefaults();
+    
+    app.Run();
+    ```
+  </Step>
+
+  <Step title="Usar Componentes">
+    ```csharp
+    public class MyService
+    {
+        private readonly ICacheService _cache;
+        private readonly IEventPublisher _eventPublisher;
+        private readonly IBackOfficeMultiTenantApi _backofficeApi;
+        private readonly IUnitOfWork _unitOfWork;
+        
+        public MyService(
+            ICacheService cache,
+            IEventPublisher eventPublisher,
+            IBackOfficeMultiTenantApi backofficeApi,
+            IUnitOfWork unitOfWork)
+        {
+            _cache = cache;
+            _eventPublisher = eventPublisher;
+            _backofficeApi = backofficeApi;
+            _unitOfWork = unitOfWork;
+        }
+        
+        public async Task ProcessAsync(string tenantId)
+        {
+            // Obter tenant do Backoffice
+            var tenant = await _backofficeApi.GetTenantAsync(tenantId);
+            
+            // Cache
+            await _cache.SetAsync($"tenant:{tenantId}", tenant);
+            
+            // Processar e salvar
+            await _unitOfWork.BeginTransactionAsync();
+            try
+            {
+                // ... lógica de negócio ...
+                
+                await _unitOfWork.CommitTransactionAsync();
+                
+                // Publicar evento
+                await _eventPublisher.PublishAsync(new ProcessCompletedEvent
+                {
+                    TenantId = tenantId
+                });
+            }
+            catch
+            {
+                await _unitOfWork.RollbackTransactionAsync();
+                throw;
+            }
+        }
+    }
+    ```
+  </Step>
+</Steps>
+
+## Melhores Práticas
+
+<CardGroup cols={2}>
+  <Card title="Sempre use Abstrações" icon="shapes">
+    Dependa de interfaces, não de implementações concretas
+  </Card>
+  <Card title="Cache Estratégico" icon="bolt">
+    Use cache para dados que mudam raramente e são lidos frequentemente
+  </Card>
+  <Card title="Resiliência" icon="shield">
+    Sempre adicione políticas de retry e circuit breaker para chamadas externas
+  </Card>
+  <Card title="Observabilidade" icon="chart-line">
+    Use logging estruturado e adicione métricas customizadas
+  </Card>
+</CardGroup>
+
+<Warning>
+  Não faça cache de dados sensíveis ou dados que precisam ser sempre atualizados
+</Warning>
+
+## Próximos Passos
+
+<CardGroup cols={2}>
+  <Card title="Backoffice" icon="building" href="/nwerp/components/backoffice">
+    Documentação do serviço Backoffice
+  </Card>
+  <Card title="Gateway" icon="door-open" href="/nwerp/components/gateway">
+    Documentação do Gateway
+  </Card>
+  <Card title="Winthor" icon="link" href="/nwerp/components/winthor">
+    Integração com Winthor
+  </Card>
+  <Card title="GoPosify" icon="cash-register" href="/nwerp/components/goposify">
+    Sistema de PDV
+  </Card>
+</CardGroup>
+

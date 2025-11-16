@@ -1,0 +1,660 @@
+---
+title: "Visão Geral da Arquitetura"
+description: "Entenda a arquitetura de microserviços do NWERP"
+icon: "sitemap"
+---
+
+## Introdução
+
+O NWERP foi projetado seguindo uma arquitetura de microserviços moderna, permitindo escalabilidade independente, manutenibilidade e resilência. Cada componente é responsável por um domínio específico do negócio e se comunica com outros serviços através de APIs REST e mensageria assíncrona.
+
+## Princípios Arquiteturais
+
+<CardGroup cols={2}>
+  <Card title="Separação de Concerns" icon="layer-group">
+    Cada microserviço é responsável por uma funcionalidade específica do domínio
+  </Card>
+  <Card title="Independência de Deploy" icon="rocket">
+    Serviços podem ser deployados independentemente sem afetar outros
+  </Card>
+  <Card title="Comunicação Assíncrona" icon="message">
+    Uso de eventos e mensagens para desacoplamento entre serviços
+  </Card>
+  <Card title="Multi-tenancy" icon="users">
+    Isolamento completo de dados e recursos por tenant
+  </Card>
+</CardGroup>
+
+## Camadas da Arquitetura
+
+### Camada de Apresentação
+
+A camada de apresentação inclui todas as interfaces de usuário e pontos de entrada da aplicação.
+
+<Tabs>
+  <Tab title="Web Applications">
+    **GoPosify Client** - Aplicação Angular para sistema PDV
+    
+    - Interface responsiva e moderna
+    - PWA (Progressive Web App) para uso offline
+    - Integração em tempo real com backend
+    
+    **Website** - Portal administrativo
+    
+    - Gestão de tenants e usuários
+    - Dashboards analíticos
+    - Configurações do sistema
+  </Tab>
+
+  <Tab title="API Gateway">
+    **Gateway Service** - Ponto de entrada único para APIs
+    
+    - Roteamento de requisições
+    - Autenticação e autorização
+    - Rate limiting e throttling
+    - Agregação de dados de múltiplos serviços
+  </Tab>
+</Tabs>
+
+### Camada de Aplicação
+
+Contém os microserviços que implementam a lógica de negócio.
+
+<AccordionGroup>
+  <Accordion title="Backoffice Service" icon="building">
+    Gerencia recursos e tenants do sistema:
+    
+    - **Multi-tenant Management** - Criação e gestão de tenants
+    - **Plan Management** - Planos e subscrições
+    - **Resource Allocation** - Alocação de databases, hosts e recursos
+    - **Purchase Management** - Controle de compras e licenças
+    
+    **Tecnologias:**
+    - ASP.NET Core Web API
+    - Entity Framework Core
+    - PostgreSQL
+    
+    **Endpoints principais:**
+    - `/api/tenants` - Gestão de tenants
+    - `/api/plans` - Gestão de planos
+    - `/api/purchases` - Gestão de compras
+  </Accordion>
+
+  <Accordion title="GoPosify Service" icon="cash-register">
+    Sistema completo de PDV e gestão:
+    
+    - **Sales Management** - Processamento de vendas
+    - **Inventory Control** - Controle de estoque
+    - **Customer Management** - Gestão de clientes
+    - **Accounting** - Contabilidade e relatórios
+    - **Dashboard Analytics** - Análises e métricas
+    
+    **Tecnologias:**
+    - ASP.NET Core Web API
+    - Entity Framework Core
+    - SignalR para atualizações em tempo real
+    
+    **Integrações:**
+    - Winthor API para sincronização
+    - Sistema de pagamentos
+    - Emissão de NF-e via SPED
+  </Accordion>
+
+  <Accordion title="Winthor Integration Service" icon="link">
+    Integração com sistema legado Winthor:
+    
+    - **Data Synchronization** - Sincronização bidirecional de dados
+    - **Queue Management** - Filas de processamento
+    - **Oracle Workers** - Workers para banco Oracle
+    - **PostgreSQL Workers** - Workers para PostgreSQL
+    - **Background Jobs** - Processamentos assíncronos com Hangfire
+    
+    **Tecnologias:**
+    - ASP.NET Core
+    - Dapper para acesso a dados
+    - Hangfire para jobs
+    - Oracle e PostgreSQL
+    
+    **Processos principais:**
+    - Carga total para nuvem
+    - Sincronização de cadastros
+    - Processamento de pedidos
+    - Gestão de estoque ideal
+  </Accordion>
+
+  <Accordion title="Bridge Service" icon="bridge">
+    Serviços de integração e ponte de dados:
+    
+    - **Data Transformation** - Transformação de dados entre sistemas
+    - **Event Sourcing** - Captura de eventos de negócio
+    - **API Aggregation** - Agregação de múltiplas fontes
+    
+    **Tecnologias:**
+    - ASP.NET Core
+    - MassTransit para mensageria
+    - PostgreSQL
+  </Accordion>
+
+  <Accordion title="Orchestration Service" icon="diagram-project">
+    Orquestração de workflows e processos complexos:
+    
+    - **Workflow Engine** - Motor de workflows
+    - **Process Automation** - Automação de processos
+    - **Event Coordination** - Coordenação de eventos entre serviços
+    
+    **Tecnologias:**
+    - ASP.NET Core
+    - MassTransit Saga para orquestração
+    - PostgreSQL
+  </Accordion>
+</AccordionGroup>
+
+### Camada de Infraestrutura
+
+Componentes compartilhados e serviços de infraestrutura.
+
+<CardGroup cols={2}>
+  <Card title="Core Components" icon="cube">
+    **ApplicationServices.Abstractions**
+    - Contratos e interfaces compartilhadas
+    - DTOs e modelos comuns
+    
+    **Infrastructure**
+    - Adaptadores de cache (Redis)
+    - Adaptadores de mensageria (RabbitMQ)
+    - Utilitários e helpers
+    - Resilience patterns
+    
+    **Infrastructure.Bootstrappers**
+    - Inicialização de databases
+    - Configuração de RabbitMQ
+    - Setup de ambientes
+  </Card>
+
+  <Card title="HTTP AMQP Broker" icon="exchange">
+    Broker HTTP para RabbitMQ:
+    
+    - Publicação de mensagens via HTTP
+    - RPC sobre AMQP
+    - Conversão HTTP → AMQP
+    
+    **Endpoints:**
+    - `/api/publish` - Publicar mensagens
+    - `/api/rpc` - Chamadas RPC
+  </Card>
+
+  <Card title="Service Defaults" icon="gear">
+    Configurações padrão para serviços:
+    
+    - Observability (Logging, Metrics, Tracing)
+    - Health checks
+    - Resilience policies
+    - Service discovery
+  </Card>
+
+  <Card title="SPED Components" icon="file-invoice">
+    Componentes fiscais brasileiros:
+    
+    - Geração de NF-e
+    - DANFE em PDF
+    - Comunicação com SEFAZ
+  </Card>
+</CardGroup>
+
+### Camada de Dados
+
+<Tabs>
+  <Tab title="PostgreSQL">
+    **Main Database** - Banco principal do sistema
+    
+    - Dados de tenants e configurações
+    - Dados transacionais do Backoffice
+    - Dados operacionais do GoPosify
+    
+    **Tenant Databases** - Bancos por tenant
+    
+    - Isolamento completo de dados
+    - Schema por tenant ou database por tenant
+    - Migrations automatizadas
+    
+    <Note>
+      Cada tenant pode ter seu próprio database ou schema dependendo da configuração
+    </Note>
+  </Tab>
+
+  <Tab title="Oracle">
+    **Winthor Database** - Integração com Winthor
+    
+    - Leitura de dados do ERP legado
+    - Sincronização de cadastros
+    - Processamento de transações
+    
+    <Warning>
+      Acesso apenas leitura recomendado para evitar conflitos
+    </Warning>
+  </Tab>
+
+  <Tab title="Redis">
+    **Cache Layer** - Cache distribuído
+    
+    - Session storage
+    - Cache de queries
+    - Rate limiting
+    - Distributed locks
+    
+    **Uso:**
+    ```csharp
+    // Exemplo de uso do cache
+    await cache.SetAsync("key", data, TimeSpan.FromMinutes(30));
+    var cached = await cache.GetAsync<MyData>("key");
+    ```
+  </Tab>
+</Tabs>
+
+## Comunicação Entre Serviços
+
+### Comunicação Síncrona
+
+<CodeGroup>
+```csharp Refit HTTP Client
+// Definição da interface
+public interface IBackOfficeApi
+{
+    [Get("/api/tenants/{id}")]
+    Task<TenantDto> GetTenantAsync(string id);
+    
+    [Post("/api/tenants")]
+    Task<TenantDto> CreateTenantAsync([Body] CreateTenantRequest request);
+}
+
+// Uso no serviço
+var tenant = await backofficeApi.GetTenantAsync(tenantId);
+```
+
+```csharp HttpClient com Resilience
+// Configuração com Polly
+services.AddHttpClient<ITenantService, TenantService>()
+    .AddPolicyHandler(GetRetryPolicy())
+    .AddPolicyHandler(GetCircuitBreakerPolicy());
+
+private static IAsyncPolicy<HttpResponseMessage> GetRetryPolicy()
+{
+    return HttpPolicyExtensions
+        .HandleTransientHttpError()
+        .WaitAndRetryAsync(3, retryAttempt => 
+            TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)));
+}
+```
+</CodeGroup>
+
+### Comunicação Assíncrona
+
+<CodeGroup>
+```csharp Publicação de Eventos
+// Publicar evento
+public class TenantCreatedEvent
+{
+    public string TenantId { get; set; }
+    public string Name { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+
+await publishEndpoint.Publish(new TenantCreatedEvent
+{
+    TenantId = tenant.Id,
+    Name = tenant.Name,
+    CreatedAt = DateTime.UtcNow
+});
+```
+
+```csharp Consumo de Eventos
+// Consumer de eventos
+public class TenantCreatedConsumer : IConsumer<TenantCreatedEvent>
+{
+    private readonly ILogger<TenantCreatedConsumer> _logger;
+    
+    public async Task Consume(ConsumeContext<TenantCreatedEvent> context)
+    {
+        _logger.LogInformation(
+            "Tenant criado: {TenantId} - {Name}", 
+            context.Message.TenantId, 
+            context.Message.Name);
+        
+        // Processar criação de recursos para o tenant
+        await CreateTenantResourcesAsync(context.Message);
+    }
+}
+```
+
+```csharp Request/Response Pattern
+// Enviar request
+var response = await requestClient.GetResponse<TenantDatabaseCreatedResponse>(
+    new CreateTenantDatabaseRequest
+    {
+        TenantId = tenantId,
+        DatabaseName = $"tenant_{tenantId}"
+    });
+
+// Consumer que responde
+public class CreateTenantDatabaseConsumer : 
+    IConsumer<CreateTenantDatabaseRequest>
+{
+    public async Task Consume(ConsumeContext<CreateTenantDatabaseRequest> context)
+    {
+        var connectionString = await CreateDatabaseAsync(context.Message);
+        
+        await context.RespondAsync(new TenantDatabaseCreatedResponse
+        {
+            ConnectionString = connectionString,
+            Success = true
+        });
+    }
+}
+```
+</CodeGroup>
+
+## Padrões Implementados
+
+<AccordionGroup>
+  <Accordion title="Domain-Driven Design (DDD)" icon="book">
+    - **Entities** - Objetos com identidade única
+    - **Value Objects** - Objetos imutáveis sem identidade
+    - **Aggregates** - Agrupamento de entidades relacionadas
+    - **Repositories** - Abstração de acesso a dados
+    - **Domain Services** - Lógica de negócio complexa
+    
+    ```csharp
+    // Exemplo de Aggregate Root
+    public class Tenant : AggregateRoot
+    {
+        public string Id { get; private set; }
+        public string Name { get; private set; }
+        public Plan Plan { get; private set; }
+        public List<Database> Databases { get; private set; }
+        
+        public void AllocateDatabase(Database database)
+        {
+            if (!Plan.AllowsDatabase(database))
+                throw new DomainException("Plan does not allow this database");
+                
+            Databases.Add(database);
+            RaiseEvent(new DatabaseAllocatedEvent(Id, database.Id));
+        }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="CQRS (Command Query Responsibility Segregation)" icon="arrow-right-arrow-left">
+    Separação entre comandos (escrita) e queries (leitura):
+    
+    **Commands:**
+    ```csharp
+    public record CreateTenantCommand(string Name, string PlanId);
+    
+    public class CreateTenantCommandHandler : 
+        IRequestHandler<CreateTenantCommand, TenantDto>
+    {
+        public async Task<TenantDto> Handle(CreateTenantCommand command)
+        {
+            var tenant = new Tenant(command.Name, command.PlanId);
+            await repository.AddAsync(tenant);
+            await unitOfWork.CommitAsync();
+            return mapper.Map<TenantDto>(tenant);
+        }
+    }
+    ```
+    
+    **Queries:**
+    ```csharp
+    public record GetTenantQuery(string TenantId);
+    
+    public class GetTenantQueryHandler : 
+        IRequestHandler<GetTenantQuery, TenantDto>
+    {
+        public async Task<TenantDto> Handle(GetTenantQuery query)
+        {
+            return await readRepository.GetByIdAsync(query.TenantId);
+        }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Repository Pattern" icon="database">
+    Abstração do acesso a dados:
+    
+    ```csharp
+    public interface IRepository<T> where T : AggregateRoot
+    {
+        Task<T> GetByIdAsync(string id);
+        Task<IEnumerable<T>> GetAllAsync();
+        Task AddAsync(T entity);
+        Task UpdateAsync(T entity);
+        Task DeleteAsync(string id);
+    }
+    
+    public class TenantRepository : Repository<Tenant>, ITenantRepository
+    {
+        public async Task<Tenant> GetByNameAsync(string name)
+        {
+            return await context.Tenants
+                .Include(t => t.Plan)
+                .Include(t => t.Databases)
+                .FirstOrDefaultAsync(t => t.Name == name);
+        }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Unit of Work" icon="list-check">
+    Gerenciamento transacional:
+    
+    ```csharp
+    public interface IUnitOfWork
+    {
+        Task<int> CommitAsync(CancellationToken cancellationToken = default);
+        Task RollbackAsync();
+    }
+    
+    // Uso
+    try
+    {
+        await tenantRepository.AddAsync(tenant);
+        await databaseRepository.AddAsync(database);
+        await unitOfWork.CommitAsync();
+    }
+    catch
+    {
+        await unitOfWork.RollbackAsync();
+        throw;
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Saga Pattern" icon="diagram-project">
+    Transações distribuídas e orquestração:
+    
+    ```csharp
+    public class TenantCreationSaga : 
+        MassTransitStateMachine<TenantCreationState>
+    {
+        public TenantCreationSaga()
+        {
+            Initially(
+                When(TenantCreated)
+                    .Then(context => context.Instance.TenantId = context.Data.TenantId)
+                    .Publish(context => new CreateDatabaseCommand(context.Instance.TenantId))
+                    .TransitionTo(DatabaseCreating));
+                    
+            During(DatabaseCreating,
+                When(DatabaseCreated)
+                    .Publish(context => new AllocateResourcesCommand(context.Instance.TenantId))
+                    .TransitionTo(ResourcesAllocating));
+                    
+            During(ResourcesAllocating,
+                When(ResourcesAllocated)
+                    .TransitionTo(Completed)
+                    .Finalize());
+        }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Circuit Breaker" icon="bolt-slash">
+    Proteção contra falhas em cascata:
+    
+    ```csharp
+    services.AddHttpClient<IWinthorApi, WinthorApi>()
+        .AddPolicyHandler(Policy
+            .HandleResult<HttpResponseMessage>(r => !r.IsSuccessStatusCode)
+            .CircuitBreakerAsync(
+                handledEventsAllowedBeforeBreaking: 3,
+                durationOfBreak: TimeSpan.FromSeconds(30),
+                onBreak: (result, timespan) => 
+                {
+                    logger.LogWarning("Circuit breaker opened for {Duration}s", 
+                        timespan.TotalSeconds);
+                }));
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Observabilidade
+
+### Logging
+
+<CodeGroup>
+```csharp Structured Logging
+// Configuração
+builder.Services.AddLogging(logging =>
+{
+    logging.AddConsole();
+    logging.AddDebug();
+    logging.AddApplicationInsights();
+});
+
+// Uso
+logger.LogInformation(
+    "Tenant {TenantId} created by user {UserId} at {Timestamp}",
+    tenantId, userId, DateTime.UtcNow);
+```
+
+```json Log Output
+{
+  "timestamp": "2024-01-15T10:30:00Z",
+  "level": "Information",
+  "message": "Tenant tenant_123 created by user user_456 at 2024-01-15T10:30:00Z",
+  "properties": {
+    "TenantId": "tenant_123",
+    "UserId": "user_456",
+    "Timestamp": "2024-01-15T10:30:00Z"
+  },
+  "service": "backoffice",
+  "environment": "production"
+}
+```
+</CodeGroup>
+
+### Metrics
+
+```csharp
+// Contadores e métricas
+var tenantCreatedCounter = Metrics.CreateCounter(
+    "tenants_created_total",
+    "Total number of tenants created");
+
+var processingDuration = Metrics.CreateHistogram(
+    "request_duration_seconds",
+    "Request processing duration");
+
+// Uso
+tenantCreatedCounter.Inc();
+
+using (processingDuration.NewTimer())
+{
+    await ProcessRequestAsync();
+}
+```
+
+### Distributed Tracing
+
+```csharp
+// OpenTelemetry
+builder.Services.AddOpenTelemetry()
+    .WithTracing(tracing =>
+    {
+        tracing
+            .AddAspNetCoreInstrumentation()
+            .AddHttpClientInstrumentation()
+            .AddEntityFrameworkCoreInstrumentation()
+            .AddSource("NWERP.*");
+    });
+
+// Activity tracking
+using var activity = activitySource.StartActivity("ProcessTenantCreation");
+activity?.SetTag("tenant.id", tenantId);
+activity?.SetTag("tenant.name", tenantName);
+```
+
+### Health Checks
+
+```csharp
+// Configuração
+builder.Services.AddHealthChecks()
+    .AddNpgSql(connectionString, name: "postgres")
+    .AddRabbitMQ(rabbitConnectionString, name: "rabbitmq")
+    .AddRedis(redisConnectionString, name: "redis")
+    .AddDbContextCheck<ApplicationDbContext>();
+
+// Endpoint
+app.MapHealthChecks("/health", new HealthCheckOptions
+{
+    ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
+});
+```
+
+## Segurança
+
+<CardGroup cols={2}>
+  <Card title="Autenticação" icon="key">
+    - JWT Bearer tokens
+    - OAuth 2.0 / OpenID Connect
+    - API Keys para integrações
+  </Card>
+  <Card title="Autorização" icon="shield">
+    - Role-Based Access Control (RBAC)
+    - Claims-based authorization
+    - Policy-based authorization
+  </Card>
+  <Card title="Criptografia" icon="lock">
+    - HTTPS/TLS para comunicação
+    - Criptografia at-rest no database
+    - Secrets no Vault
+  </Card>
+  <Card title="Multi-tenancy" icon="users-between-lines">
+    - Isolamento de dados por tenant
+    - Row-level security
+    - Tenant context propagation
+  </Card>
+</CardGroup>
+
+<Warning>
+  Nunca armazene credenciais ou secrets em código ou arquivos de configuração versionados
+</Warning>
+
+## Próximos Passos
+
+<CardGroup cols={2}>
+  <Card title="Core Components" icon="cube" href="/nwerp/components/core">
+    Detalhes dos componentes de infraestrutura
+  </Card>
+  <Card title="Backoffice" icon="building" href="/nwerp/components/backoffice">
+    Documentação do serviço Backoffice
+  </Card>
+  <Card title="GoPosify" icon="cash-register" href="/nwerp/components/goposify">
+    Documentação do sistema PDV
+  </Card>
+  <Card title="Deployment" icon="server" href="/nwerp/deployment/infrastructure">
+    Guias de deployment
+  </Card>
+</CardGroup>
+

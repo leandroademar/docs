@@ -1,0 +1,487 @@
+---
+title: "Estatísticas do Projeto"
+description: "Métricas e estatísticas detalhadas da solução NWERP"
+icon: "chart-bar"
+---
+
+## Resumo Geral
+
+O NWERP é uma solução empresarial robusta e escalável, construída com arquitetura de microserviços moderna.
+
+<CardGroup cols={3}>
+  <Card title="Projetos" icon="folder">
+    **44** projetos .csproj
+  </Card>
+  <Card title="Classes" icon="file-code">
+    **4.305** arquivos .cs
+  </Card>
+  <Card title="Linhas de Código" icon="code">
+    **1.041.611** linhas
+  </Card>
+</CardGroup>
+
+## Projetos por Categoria
+
+### Core Components
+
+<Card title="Infraestrutura Core" icon="cubes">
+  **8 projetos** que formam a base da plataforma
+  
+  - NWERP.Infrastructure
+  - NWERP.Infrastructure.Bootstrappers
+  - NWERP.Infrastructure.HttpAmqpBroker
+  - NWERP.Infrastructure.IntegratedTests
+  - NWERP.Infrastructure.ServiceDefaults
+  - NWERP.ApplicationServices.Abstractions
+  - NWERP.Infrastructure.Data.MainDatabase
+  - NWERP.Infrastructure.ResourceManager
+</Card>
+
+### Distribuição de Projetos
+
+<Tabs>
+  <Tab title="Backoffice">
+    **7 projetos** para administração e gestão multi-tenant
+    
+    - NWERP.Backoffice.Application
+    - NWERP.Backoffice.AppHost
+    - NWERP.Backoffice.Contracts
+    - NWERP.Backoffice.Domain
+    - NWERP.Backoffice.Infrastructure
+    - NWERP.Backoffice.IntegratedTests
+    - NWERP.Backoffice.UnitTests
+  </Tab>
+
+  <Tab title="Winthor">
+    **7 projetos** para integração com ERP legacy
+    
+    - NWERP.Winthor.Application
+    - NWERP.Winthor.AppHost
+    - NWERP.Winthor.Contracts
+    - NWERP.Winthor.Domain
+    - NWERP.Winthor.Infrastructure
+    - NWERP.Winthor.IntegratedTests
+    - NWERP.Winthor.Data.TenantDatabase
+    
+    <Note>
+      **Total Winthor:** 1.632 arquivos | 154.850 linhas de código
+    </Note>
+  </Tab>
+
+  <Tab title="Bridge">
+    **6 projetos** para integração e sincronização
+    
+    - NWERP.Bridge.Application
+    - NWERP.Bridge.AppHost
+    - NWERP.Bridge.Contracts
+    - NWERP.Bridge.Domain
+    - NWERP.Bridge.Infrastructure
+    - NWERP.Bridge.Data.TenantDatabase
+  </Tab>
+
+  <Tab title="Orchestration">
+    **6 projetos** para orquestração de workflows
+    
+    - NWERP.Orchestration.Application
+    - NWERP.Orchestration.AppHost
+    - NWERP.Orchestration.Contracts
+    - NWERP.Orchestration.Domain
+    - NWERP.Orchestration.Infrastructure
+    - NWERP.Orchestration.Data.TenantDatabase
+  </Tab>
+
+  <Tab title="Outros Módulos">
+    **Argos** - 3 projetos
+    - NWERP.Argos.AppHost
+    - NWERP.Argos.Core
+    - NWERP.Argos.Infra
+    
+    **GoPosify** - 1 projeto
+    - NWERP.GoPosify.WebApp
+    
+    **SPED/NFe** - 4 projetos
+    - NFe.AppTeste.NetCore
+    - NFe.Danfe.Base
+    - NFe.Danfe.OpenFast
+    - NFe.Danfe.AppTeste.OpenFast
+    
+    **Website** - 2 projetos
+    - NWERP.Backoffice.WebApp
+    - NWERP.Backoffice.IntegratedTests
+  </Tab>
+</Tabs>
+
+## Análise Detalhada - Módulo Winthor
+
+O módulo Winthor é o maior componente do sistema, responsável pela integração com o sistema legacy.
+
+### Métricas do Módulo
+
+<CardGroup cols={2}>
+  <Card title="Total de Arquivos" icon="files">
+    **1.632** arquivos de código
+  </Card>
+  <Card title="Linhas de Código" icon="code">
+    **154.850** linhas
+  </Card>
+  <Card title="Projetos" icon="folder">
+    **7** projetos especializados
+  </Card>
+  <Card title="Services" icon="gears">
+    **23** serviços principais
+  </Card>
+</CardGroup>
+
+### Arquitetura do Módulo Winthor
+
+O módulo segue os princípios de **Clean Architecture** e **Domain-Driven Design (DDD)**.
+
+```mermaid
+graph TD
+    %% Camadas externas
+    CoreInfra[NWERP.Infrastructure]
+    CoreBootstrap[NWERP.Infrastructure.Bootstrappers]
+    CoreServiceDef[NWERP.Infrastructure.ServiceDefaults]
+
+    %% Camada de Contratos
+    Contracts[NWERP.Winthor.Contracts<br/>741 arquivos<br/>47.129 linhas]
+
+    %% Camada de Domínio
+    Domain[NWERP.Winthor.Domain<br/>537 arquivos<br/>74.498 linhas]
+
+    %% Camada de Dados
+    DataTenant[NWERP.Winthor.Data.TenantDatabase<br/>241 arquivos<br/>21.335 linhas]
+
+    %% Camada de Infraestrutura
+    Infrastructure[NWERP.Winthor.Infrastructure<br/>17 arquivos<br/>943 linhas]
+
+    %% Camada de Aplicação
+    Application[NWERP.Winthor.Application<br/>42 arquivos<br/>2.688 linhas]
+
+    %% Camada de Apresentação
+    AppHost[NWERP.Winthor.AppHost<br/>54 arquivos<br/>8.257 linhas]
+
+    %% Dependências Core
+    Contracts --> CoreInfra
+    Domain --> CoreInfra
+    Domain --> Contracts
+    DataTenant --> Domain
+
+    %% Dependências Infrastructure
+    Infrastructure --> Contracts
+    Infrastructure --> Domain
+    Infrastructure --> DataTenant
+    Infrastructure --> CoreInfra
+    Infrastructure --> CoreBootstrap
+
+    %% Dependências Application
+    Application --> Contracts
+    Application --> Domain
+    Application --> Infrastructure
+
+    %% Dependências AppHost
+    AppHost --> Application
+    AppHost --> Infrastructure
+    AppHost --> Contracts
+    AppHost --> Domain
+    AppHost --> DataTenant
+    AppHost --> CoreServiceDef
+
+    %% Estilos
+    classDef coreClass fill:#e1f5ff,stroke:#01579b,stroke-width:2px
+    classDef contractClass fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    classDef domainClass fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    classDef dataClass fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
+    classDef infraClass fill:#fce4ec,stroke:#880e4f,stroke-width:2px
+    classDef appClass fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+    classDef hostClass fill:#ffebee,stroke:#b71c1c,stroke-width:3px
+
+    class CoreInfra,CoreBootstrap,CoreServiceDef coreClass
+    class Contracts contractClass
+    class Domain domainClass
+    class DataTenant dataClass
+    class Infrastructure infraClass
+    class Application appClass
+    class AppHost hostClass
+```
+
+### Detalhamento por Camada
+
+<AccordionGroup>
+  <Accordion title="AppHost - Camada de Apresentação" icon="server">
+    **54 arquivos | 8.257 linhas**
+    
+    - 14 Endpoints REST
+    - Configuração de serviços
+    - Jobs do Hangfire
+    - Workloads especializados
+  </Accordion>
+
+  <Accordion title="Application - Camada de Aplicação" icon="cogs">
+    **42 arquivos | 2.688 linhas**
+    
+    **23 Services principais:**
+    - AutorizacaoService
+    - CargaTotalNuvemService
+    - ClienteFVService
+    - CotacaoFVService
+    - EstoqueIdealService
+    - IntegracaoService
+    - MonitorService
+    - OrcamentoFVService
+    - ParametrosService
+    - PedidoPolibrasService
+    - PedidoService
+    - PreEntradaService
+    - ScriptsService
+    
+    **Serviços Especializados:**
+    - **Coagro:** Serviços específicos para cooperativa
+    - **Compras/GiroDia:** Gestão de compras e giro de estoque
+    - **Kinitos:** 5 serviços de integração
+      - FaturamentoService
+      - PedidoVendaService
+      - ConsolidarEstoqueService
+      - EntradaService
+      - DevolucaoService
+  </Accordion>
+
+  <Accordion title="Contracts - Contratos e DTOs" icon="file-contract">
+    **741 arquivos | 47.129 linhas**
+    
+    - **63 entidades** (Entity)
+    - **560 Transfer Objects** (TO)
+    
+    **Principais TOs:**
+    - Compras
+    - EstoqueIdeal
+    - WmsAbastecimento
+    - Events
+    - Customizado
+  </Accordion>
+
+  <Accordion title="Domain - Camada de Domínio" icon="cube">
+    **537 arquivos | 74.498 linhas**
+    
+    Contém a lógica de negócio central:
+    - Entidades de domínio
+    - Agregados
+    - Value Objects
+    - Domain Events
+    - Regras de negócio
+    
+    **Módulos principais:**
+    - Compras
+    - Estoque
+    - Vendas
+    - Força de Vendas
+  </Accordion>
+
+  <Accordion title="Data.TenantDatabase - Camada de Dados" icon="database">
+    **241 arquivos | 21.335 linhas**
+    
+    - EF Core Context
+    - Repositórios
+    - Dapper Queries
+    - Oracle Database
+    - Suporte multi-tenant
+    - Mapeamentos
+    - Migrações
+  </Accordion>
+
+  <Accordion title="Infrastructure - Infraestrutura" icon="toolbox">
+    **17 arquivos | 943 linhas**
+    
+    - Adaptadores RabbitMQ
+    - Adaptadores Hangfire
+    - Implementações MediatR
+    - Redis Cache
+    - Integrações externas
+  </Accordion>
+</AccordionGroup>
+
+### Stack Tecnológico
+
+<Tabs>
+  <Tab title="Frameworks">
+    - **.NET 9.0** - Framework principal
+    - **ASP.NET Core** - Web API e hosting
+    - **Entity Framework Core 9.0** - ORM
+    - **Blazor** / **MudBlazor** - UI Components
+  </Tab>
+
+  <Tab title="Banco de Dados">
+    - **Oracle Database** - Banco principal
+    - Oracle.EntityFrameworkCore 9.23.60
+    - **Dapper** - Micro-ORM para performance
+    - **Multi-tenant** - Suporte a múltiplos tenants
+  </Tab>
+
+  <Tab title="Mensageria & Jobs">
+    - **RabbitMQ** (Oragon.RabbitMQ)
+    - **Hangfire** - Background jobs
+    - **MediatR** - Mediator pattern / CQRS
+  </Tab>
+
+  <Tab title="Cache & Performance">
+    - **Redis** (Aspire.StackExchange.Redis)
+    - **OpenTelemetry** - Observabilidade
+    - **Grafana OpenTelemetry** - Monitoramento
+  </Tab>
+
+  <Tab title="Qualidade">
+    - **FluentValidation** - Validação de objetos
+    - **xUnit** - Testes unitários
+    - **SSH.NET** - Conexões SSH/SFTP
+  </Tab>
+
+  <Tab title="DevOps">
+    - **Docker** - Containerização
+    - **.NET Aspire** - Orquestração de microserviços
+    - **Scalar/Swagger** - Documentação de API
+  </Tab>
+</Tabs>
+
+## Funcionalidades do Módulo Winthor
+
+<CardGroup cols={2}>
+  <Card title="Gestão de Compras" icon="cart-shopping">
+    - Análise de giro de estoque
+    - Sugestão de compras
+    - Cotações
+  </Card>
+  <Card title="Integração Kinitos" icon="arrows-rotate">
+    - Sincronização de pedidos
+    - Faturamento
+    - Controle de estoque
+    - Devoluções
+  </Card>
+  <Card title="Força de Vendas (FV)" icon="users">
+    - Gestão de clientes
+    - Orçamentos
+    - Cotações
+  </Card>
+  <Card title="Estoque" icon="warehouse">
+    - Estoque ideal
+    - WMS e abastecimento
+    - Consolidação
+  </Card>
+</CardGroup>
+
+### Principais Entidades
+
+<Accordion title="Entidades de Domínio" icon="database">
+  Algumas das entidades principais do domínio:
+  
+  - **Produto** - Cadastro de produtos
+  - **Categoria/Departamento** - Organização de produtos
+  - **Cliente/Destinatário** - Gestão de clientes
+  - **NotaFiscal** - Documentos fiscais
+  - **Pedido** - Gestão de pedidos
+  - **Supervisor** - Gestão de equipe
+  - **Praça** - Regiões de atuação
+  - **Roteio de Visitas** - Planejamento de visitas
+</Accordion>
+
+## Princípios Arquiteturais
+
+<CardGroup cols={2}>
+  <Card title="Separation of Concerns" icon="layer-group">
+    Cada camada tem responsabilidades bem definidas
+  </Card>
+  <Card title="Dependency Inversion" icon="arrow-down-up-across-line">
+    Camadas superiores não dependem de implementações
+  </Card>
+  <Card title="Single Responsibility" icon="bullseye">
+    Cada classe tem uma única razão para mudar
+  </Card>
+  <Card title="Open/Closed" icon="door-open">
+    Aberto para extensão, fechado para modificação
+  </Card>
+  <Card title="Interface Segregation" icon="puzzle-piece">
+    Interfaces específicas para cada cliente
+  </Card>
+  <Card title="Multi-tenancy" icon="building">
+    Suporte nativo a múltiplos tenants
+  </Card>
+</CardGroup>
+
+## Fluxo de Dependências
+
+```mermaid
+graph BT
+    A[NWERP.Infrastructure]
+    B[NWERP.Winthor.Contracts]
+    C[NWERP.Winthor.Domain]
+    D[NWERP.Winthor.Data.TenantDatabase]
+    E[NWERP.Winthor.Infrastructure]
+    F[NWERP.Winthor.Application]
+    G[NWERP.Winthor.AppHost]
+    
+    B --> A
+    C --> B
+    C --> A
+    D --> C
+    E --> D
+    E --> C
+    E --> B
+    E --> A
+    F --> E
+    F --> C
+    F --> B
+    G --> F
+    G --> E
+    G --> D
+    G --> C
+    G --> B
+    
+    style A fill:#e1f5ff
+    style B fill:#fff3e0
+    style C fill:#f3e5f5
+    style D fill:#e8f5e9
+    style E fill:#fce4ec
+    style F fill:#fff9c4
+    style G fill:#ffebee
+```
+
+<Note>
+  A arquitetura segue o princípio de **dependências unidirecionais**, onde as camadas externas dependem das camadas internas, mas nunca o contrário.
+</Note>
+
+## Resumo Executivo
+
+<CardGroup cols={3}>
+  <Card title="Total de Projetos" icon="folder-tree">
+    **44** projetos .csproj
+  </Card>
+  <Card title="Total de Classes" icon="file-code">
+    **4.305** arquivos
+  </Card>
+  <Card title="Total de Código" icon="code">
+    **1.041.611** linhas
+  </Card>
+</CardGroup>
+
+<Info>
+  **Nota:** Os números excluem arquivos em diretórios `bin/`, `obj/` e `node_modules/`
+  
+  *Estatísticas geradas em: 13/11/2025*
+</Info>
+
+## Próximos Passos
+
+<CardGroup cols={2}>
+  <Card title="Classes Principais" icon="list" href="/nwerp/architecture/classes">
+    Veja a lista de classes principais
+  </Card>
+  <Card title="Estimativa de Desenvolvimento" icon="calendar" href="/nwerp/architecture/estimates">
+    Consulte as estimativas do projeto
+  </Card>
+  <Card title="Visão Geral" icon="diagram-project" href="/nwerp/architecture/overview">
+    Entenda a arquitetura geral
+  </Card>
+  <Card title="Componentes" icon="cubes" href="/nwerp/components/core">
+    Explore os componentes
+  </Card>
+</CardGroup>
+

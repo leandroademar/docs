@@ -1,0 +1,984 @@
+---
+title: "Backoffice Service"
+description: "Serviço de administração e gerenciamento de recursos do NWERP"
+icon: "building"
+---
+
+## Introdução
+
+O Backoffice é o serviço responsável pela administração central do sistema NWERP. Ele gerencia tenants, planos de assinatura, alocação de recursos (databases, hosts) e controle de compras/licenças.
+
+<CardGroup cols={2}>
+  <Card title="Multi-tenant" icon="users">
+    Gestão completa de tenants e isolamento
+  </Card>
+  <Card title="Planos" icon="list-check">
+    Gerenciamento de planos e subscrições
+  </Card>
+  <Card title="Recursos" icon="server">
+    Alocação dinâmica de databases e hosts
+  </Card>
+  <Card title="Compras" icon="cart-shopping">
+    Controle de compras e licenciamento
+  </Card>
+</CardGroup>
+
+## Arquitetura
+
+O Backoffice segue uma arquitetura em camadas com Domain-Driven Design (DDD).
+
+### Estrutura de Projetos
+
+<AccordionGroup>
+  <Accordion title="NWERP.Backoffice.AppHost" icon="server">
+    **Camada de Apresentação** - API REST e Controllers
+    
+    - Controllers para APIs REST
+    - Configuração de middlewares
+    - Workloads (Bootstrap, Worker, WebAPI)
+    - Swagger/OpenAPI
+    
+    **Principais Endpoints:**
+    - `/api/tenants` - Gestão de tenants
+    - `/api/plans` - Gestão de planos
+    - `/api/purchases` - Gestão de compras
+  </Accordion>
+
+  <Accordion title="NWERP.Backoffice.Application" icon="cogs">
+    **Camada de Aplicação** - Lógica de negócio e serviços
+    
+    - `MultiTenantService` - Gerenciamento de tenants
+    - `PlanService` - Gerenciamento de planos
+    - `PurchaseService` - Gerenciamento de compras
+    
+    Esta camada orquestra as operações entre a camada de domínio e infraestrutura.
+  </Accordion>
+
+  <Accordion title="NWERP.Backoffice.Contracts" icon="file-contract">
+    **Contratos** - Interfaces e DTOs
+    
+    - `IDatabasePhysicalAllocatorService`
+    - `IHostPhysicalAllocatorService`
+    - `ITenantPhysicalAllocatorService`
+    - `IPlanService`
+    - `IPurchaseService`
+    
+    Transfer Objects (TOs) para comunicação externa.
+  </Accordion>
+
+  <Accordion title="NWERP.Backoffice.Domain" icon="cube">
+    **Camada de Domínio** - Entidades e lógica de negócio
+    
+    **Entidades:**
+    - `Tenant` - Representa um cliente/inquilino
+    - `Plan` - Planos de assinatura
+    - `Database` - Recursos de database
+    - `Host` - Recursos de servidor
+    
+    **Adaptadores:**
+    - Allocation - Alocação de recursos
+    - PhysicalAllocator - Alocadores físicos
+  </Accordion>
+
+  <Accordion title="NWERP.BackOffice.Infrastructure" icon="toolbox">
+    **Infraestrutura** - Implementações de infraestrutura
+    
+    - Adaptadores de mensageria
+    - Adaptadores de segurança
+    - Serviços de alocação física
+  </Accordion>
+
+  <Accordion title="NWERP.Infrastructure.Data.MainDatabase" icon="database">
+    **Acesso a Dados** - DbContext e Repositories
+    
+    - Migrations
+    - Configurações de entidades
+    - Repositories
+  </Accordion>
+</AccordionGroup>
+
+## Domínio
+
+### Entidades Principais
+
+<Tabs>
+  <Tab title="Tenant">
+    **Tenant** - Representa um cliente do sistema com recursos alocados.
+    
+    ```csharp
+    public class Tenant : AggregateRoot, IAllocableResource
+    {
+        public string Id { get; private set; }
+        public string Name { get; private set; }
+        public string Email { get; private set; }
+        public Plan Plan { get; private set; }
+        public string PlanId { get; private set; }
+        public List<Database> Databases { get; private set; }
+        public ResourceStatus Status { get; private set; }
+        public AllocationType AllocationType { get; private set; }
+        public DateTime CreatedAt { get; private set; }
+        public DateTime UpdatedAt { get; private set; }
+        
+        public void AllocateDatabase(Database database)
+        {
+            if (!Plan.AllowsDatabaseAllocation())
+                throw new DomainException(
+                    "O plano atual não permite alocação de database");
+            
+            if (Databases.Count >= Plan.MaxDatabases)
+                throw new DomainException(
+                    $"Limite de {Plan.MaxDatabases} databases atingido");
+            
+            Databases.Add(database);
+            UpdatedAt = DateTime.UtcNow;
+            
+            RaiseEvent(new DatabaseAllocatedToTenantEvent
+            {
+                TenantId = Id,
+                DatabaseId = database.Id
+            });
+        }
+        
+        public void ChangePlan(Plan newPlan)
+        {
+            if (newPlan.MaxDatabases < Databases.Count)
+                throw new DomainException(
+                    "Novo plano não suporta quantidade atual de databases");
+            
+            Plan = newPlan;
+            PlanId = newPlan.Id;
+            UpdatedAt = DateTime.UtcNow;
+            
+            RaiseEvent(new TenantPlanChangedEvent
+            {
+                TenantId = Id,
+                OldPlanId = PlanId,
+                NewPlanId = newPlan.Id
+            });
+        }
+        
+        public void Activate()
+        {
+            Status = ResourceStatus.Active;
+            UpdatedAt = DateTime.UtcNow;
+            
+            RaiseEvent(new TenantActivatedEvent { TenantId = Id });
+        }
+        
+        public void Deactivate()
+        {
+            Status = ResourceStatus.Inactive;
+            UpdatedAt = DateTime.UtcNow;
+            
+            RaiseEvent(new TenantDeactivatedEvent { TenantId = Id });
+        }
+    }
+    ```
+    
+    **Propriedades:**
+    - `Id` - Identificador único
+    - `Name` - Nome do tenant
+    - `Email` - Email de contato
+    - `Plan` - Plano contratado
+    - `Databases` - Databases alocados
+    - `Status` - Status do recurso (Active/Inactive/Suspended)
+    - `AllocationType` - Tipo de alocação (Shared/Dedicated)
+  </Tab>
+
+  <Tab title="Plan">
+    **Plan** - Plano de assinatura com limites e permissões.
+    
+    ```csharp
+    public class Plan : AggregateRoot
+    {
+        public string Id { get; private set; }
+        public string Name { get; private set; }
+        public string Description { get; private set; }
+        public decimal Price { get; private set; }
+        public int MaxDatabases { get; private set; }
+        public int MaxUsers { get; private set; }
+        public int MaxStorage { get; private set; } // GB
+        public bool AllowsCustomDomain { get; private set; }
+        public bool AllowsApiAccess { get; private set; }
+        public ResourceStatus Status { get; private set; }
+        public DateTime CreatedAt { get; private set; }
+        public DateTime UpdatedAt { get; private set; }
+        
+        public bool AllowsDatabaseAllocation()
+        {
+            return Status == ResourceStatus.Active && MaxDatabases > 0;
+        }
+        
+        public bool CanUpgradeTo(Plan targetPlan)
+        {
+            return targetPlan.Price > Price;
+        }
+        
+        public void UpdateLimits(
+            int maxDatabases, 
+            int maxUsers, 
+            int maxStorage)
+        {
+            if (maxDatabases < 1)
+                throw new DomainException(
+                    "Plano deve permitir pelo menos 1 database");
+            
+            MaxDatabases = maxDatabases;
+            MaxUsers = maxUsers;
+            MaxStorage = maxStorage;
+            UpdatedAt = DateTime.UtcNow;
+        }
+    }
+    ```
+    
+    **Propriedades:**
+    - `MaxDatabases` - Número máximo de databases
+    - `MaxUsers` - Número máximo de usuários
+    - `MaxStorage` - Armazenamento máximo em GB
+    - `AllowsCustomDomain` - Permite domínio customizado
+    - `AllowsApiAccess` - Permite acesso via API
+  </Tab>
+
+  <Tab title="Database">
+    **Database** - Recurso de database alocado a um tenant.
+    
+    ```csharp
+    public class Database : AggregateRoot, IAllocableResource
+    {
+        public string Id { get; private set; }
+        public string Name { get; private set; }
+        public string ConnectionString { get; private set; }
+        public string Provider { get; private set; } // PostgreSQL, Oracle
+        public string TenantId { get; private set; }
+        public Tenant Tenant { get; private set; }
+        public string HostId { get; private set; }
+        public Host Host { get; private set; }
+        public int SizeInMB { get; private set; }
+        public ResourceStatus Status { get; private set; }
+        public AllocationType AllocationType { get; private set; }
+        public DateTime CreatedAt { get; private set; }
+        public DateTime UpdatedAt { get; private set; }
+        
+        public void ChangeHost(Host newHost)
+        {
+            if (newHost.Status != ResourceStatus.Active)
+                throw new DomainException("Host de destino não está ativo");
+            
+            Host = newHost;
+            HostId = newHost.Id;
+            UpdatedAt = DateTime.UtcNow;
+            
+            RaiseEvent(new DatabaseHostChangedEvent
+            {
+                DatabaseId = Id,
+                OldHostId = HostId,
+                NewHostId = newHost.Id
+            });
+        }
+        
+        public void UpdateSize(int newSizeInMB)
+        {
+            if (newSizeInMB < SizeInMB)
+                throw new DomainException(
+                    "Não é possível reduzir o tamanho do database");
+            
+            SizeInMB = newSizeInMB;
+            UpdatedAt = DateTime.UtcNow;
+        }
+    }
+    ```
+  </Tab>
+
+  <Tab title="Host">
+    **Host** - Servidor físico ou virtual que hospeda databases.
+    
+    ```csharp
+    public class Host : AggregateRoot, IAllocableResource
+    {
+        public string Id { get; private set; }
+        public string Name { get; private set; }
+        public string Hostname { get; private set; }
+        public string IpAddress { get; private set; }
+        public int Port { get; private set; }
+        public int MaxConnections { get; private set; }
+        public int CurrentConnections { get; private set; }
+        public int MaxStorageGB { get; private set; }
+        public int UsedStorageGB { get; private set; }
+        public List<Database> Databases { get; private set; }
+        public ResourceStatus Status { get; private set; }
+        public AllocationType AllocationType { get; private set; }
+        public DateTime CreatedAt { get; private set; }
+        public DateTime UpdatedAt { get; private set; }
+        
+        public bool CanAllocateDatabase(int requiredStorageGB)
+        {
+            return Status == ResourceStatus.Active &&
+                   (UsedStorageGB + requiredStorageGB) <= MaxStorageGB &&
+                   CurrentConnections < MaxConnections;
+        }
+        
+        public void AllocateDatabase(Database database)
+        {
+            if (!CanAllocateDatabase(database.SizeInMB / 1024))
+                throw new DomainException(
+                    "Host não possui recursos suficientes");
+            
+            Databases.Add(database);
+            UsedStorageGB += database.SizeInMB / 1024;
+            UpdatedAt = DateTime.UtcNow;
+        }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+### Value Objects e Enums
+
+<CodeGroup>
+```csharp ResourceStatus
+public enum ResourceStatus
+{
+    Pending,      // Aguardando alocação
+    Active,       // Ativo e em uso
+    Inactive,     // Inativo temporariamente
+    Suspended,    // Suspenso por falta de pagamento
+    Deleted       // Marcado para exclusão
+}
+```
+
+```csharp AllocationType
+public enum AllocationType
+{
+    Shared,       // Recursos compartilhados
+    Dedicated     // Recursos dedicados
+}
+```
+</CodeGroup>
+
+## Serviços de Aplicação
+
+### MultiTenantService
+
+Gerenciamento completo de tenants.
+
+```csharp
+public class MultiTenantService : IMultiTenantService
+{
+    private readonly ITenantRepository _tenantRepository;
+    private readonly IPlanRepository _planRepository;
+    private readonly IUnitOfWork _unitOfWork;
+    private readonly IEventPublisher _eventPublisher;
+    private readonly IDatabasePhysicalAllocatorService _databaseAllocator;
+    private readonly ILogger<MultiTenantService> _logger;
+    
+    public async Task<TenantDto> CreateTenantAsync(CreateTenantRequest request)
+    {
+        _logger.LogInformation(
+            "Criando tenant {Name} com plano {PlanId}", 
+            request.Name, request.PlanId);
+        
+        // Validar plano
+        var plan = await _planRepository.GetByIdAsync(request.PlanId);
+        if (plan == null)
+            throw new BusinessException("Plano não encontrado");
+        
+        // Criar tenant
+        var tenant = new Tenant(request.Name, request.Email, plan);
+        
+        await _tenantRepository.AddAsync(tenant);
+        await _unitOfWork.CommitAsync();
+        
+        // Publicar evento
+        await _eventPublisher.PublishAsync(new TenantCreatedEvent
+        {
+            TenantId = tenant.Id,
+            Name = tenant.Name,
+            Email = tenant.Email,
+            PlanId = plan.Id
+        });
+        
+        _logger.LogInformation("Tenant {TenantId} criado com sucesso", tenant.Id);
+        
+        return MapToDto(tenant);
+    }
+    
+    public async Task<TenantDto> AllocateDatabaseAsync(
+        string tenantId, 
+        AllocateDatabaseRequest request)
+    {
+        var tenant = await _tenantRepository.GetByIdWithDatabasesAsync(tenantId);
+        if (tenant == null)
+            throw new BusinessException("Tenant não encontrado");
+        
+        // Alocar database fisicamente
+        var database = await _databaseAllocator.AllocateAsync(
+            tenant, 
+            request.Provider,
+            request.SizeInMB);
+        
+        // Adicionar ao tenant
+        tenant.AllocateDatabase(database);
+        
+        await _tenantRepository.UpdateAsync(tenant);
+        await _unitOfWork.CommitAsync();
+        
+        return MapToDto(tenant);
+    }
+    
+    public async Task ChangePlanAsync(string tenantId, string newPlanId)
+    {
+        var tenant = await _tenantRepository.GetByIdAsync(tenantId);
+        if (tenant == null)
+            throw new BusinessException("Tenant não encontrado");
+        
+        var newPlan = await _planRepository.GetByIdAsync(newPlanId);
+        if (newPlan == null)
+            throw new BusinessException("Plano não encontrado");
+        
+        tenant.ChangePlan(newPlan);
+        
+        await _tenantRepository.UpdateAsync(tenant);
+        await _unitOfWork.CommitAsync();
+        
+        await _eventPublisher.PublishAsync(new TenantPlanChangedEvent
+        {
+            TenantId = tenantId,
+            OldPlanId = tenant.PlanId,
+            NewPlanId = newPlanId
+        });
+    }
+}
+```
+
+### PlanService
+
+Gerenciamento de planos de assinatura.
+
+```csharp
+public class PlanService : IPlanService
+{
+    private readonly IPlanRepository _planRepository;
+    private readonly IUnitOfWork _unitOfWork;
+    private readonly ILogger<PlanService> _logger;
+    
+    public async Task<PlanDto> CreatePlanAsync(CreatePlanRequest request)
+    {
+        var plan = new Plan(
+            request.Name,
+            request.Description,
+            request.Price,
+            request.MaxDatabases,
+            request.MaxUsers,
+            request.MaxStorage);
+        
+        await _planRepository.AddAsync(plan);
+        await _unitOfWork.CommitAsync();
+        
+        _logger.LogInformation("Plano {PlanId} criado: {Name}", plan.Id, plan.Name);
+        
+        return MapToDto(plan);
+    }
+    
+    public async Task<PagedResult<PlanDto>> GetPlansAsync(
+        int page = 1, 
+        int pageSize = 10)
+    {
+        var (plans, totalCount) = await _planRepository
+            .GetPagedAsync(page, pageSize);
+        
+        return new PagedResult<PlanDto>
+        {
+            Items = plans.Select(MapToDto).ToList(),
+            Page = page,
+            PageSize = pageSize,
+            TotalCount = totalCount
+        };
+    }
+}
+```
+
+### PurchaseService
+
+Controle de compras e licenças.
+
+```csharp
+public class PurchaseService : IPurchaseService
+{
+    private readonly IPurchaseRepository _purchaseRepository;
+    private readonly ITenantRepository _tenantRepository;
+    private readonly IUnitOfWork _unitOfWork;
+    private readonly IEventPublisher _eventPublisher;
+    
+    public async Task<PurchaseDto> CreatePurchaseAsync(CreatePurchaseRequest request)
+    {
+        var tenant = await _tenantRepository.GetByIdAsync(request.TenantId);
+        if (tenant == null)
+            throw new BusinessException("Tenant não encontrado");
+        
+        var purchase = new Purchase(
+            tenant.Id,
+            request.PlanId,
+            request.Amount,
+            request.BillingPeriod);
+        
+        await _purchaseRepository.AddAsync(purchase);
+        await _unitOfWork.CommitAsync();
+        
+        await _eventPublisher.PublishAsync(new PurchaseCreatedEvent
+        {
+            PurchaseId = purchase.Id,
+            TenantId = tenant.Id,
+            Amount = purchase.Amount
+        });
+        
+        return MapToDto(purchase);
+    }
+}
+```
+
+## Alocação de Recursos
+
+### DatabasePhysicalAllocatorService
+
+Serviço responsável pela alocação física de databases.
+
+```csharp
+public class DatabasePhysicalAllocatorService : IDatabasePhysicalAllocatorService
+{
+    private readonly IHostRepository _hostRepository;
+    private readonly IDatabaseRepository _databaseRepository;
+    private readonly ILogger<DatabasePhysicalAllocatorService> _logger;
+    
+    public async Task<Database> AllocateAsync(
+        Tenant tenant,
+        string provider,
+        int sizeInMB)
+    {
+        _logger.LogInformation(
+            "Alocando database {Provider} de {Size}MB para tenant {TenantId}",
+            provider, sizeInMB, tenant.Id);
+        
+        // Encontrar host disponível
+        var host = await FindAvailableHostAsync(provider, sizeInMB);
+        if (host == null)
+        {
+            _logger.LogWarning("Nenhum host disponível, criando novo host");
+            host = await CreateNewHostAsync(provider);
+        }
+        
+        // Criar database fisicamente
+        var connectionString = await CreatePhysicalDatabaseAsync(
+            host, 
+            tenant.Id, 
+            provider);
+        
+        // Criar entidade Database
+        var database = new Database(
+            $"{tenant.Name}_{provider}_{Guid.NewGuid():N}",
+            connectionString,
+            provider,
+            tenant.Id,
+            host.Id,
+            sizeInMB);
+        
+        await _databaseRepository.AddAsync(database);
+        
+        // Atualizar host
+        host.AllocateDatabase(database);
+        await _hostRepository.UpdateAsync(host);
+        
+        _logger.LogInformation(
+            "Database {DatabaseId} alocado com sucesso no host {HostId}",
+            database.Id, host.Id);
+        
+        return database;
+    }
+    
+    private async Task<Host?> FindAvailableHostAsync(string provider, int sizeInMB)
+    {
+        var hosts = await _hostRepository.GetActiveHostsByProviderAsync(provider);
+        
+        return hosts.FirstOrDefault(h => 
+            h.CanAllocateDatabase(sizeInMB / 1024));
+    }
+    
+    private async Task<string> CreatePhysicalDatabaseAsync(
+        Host host,
+        string tenantId,
+        string provider)
+    {
+        var databaseName = $"tenant_{tenantId}_{Guid.NewGuid():N}";
+        
+        if (provider == "PostgreSQL")
+        {
+            // Criar database no PostgreSQL
+            using var connection = new NpgsqlConnection(
+                $"Host={host.Hostname};Port={host.Port};Username=postgres;Password=***");
+            
+            await connection.OpenAsync();
+            
+            using var command = new NpgsqlCommand(
+                $"CREATE DATABASE {databaseName}", 
+                connection);
+            
+            await command.ExecuteNonQueryAsync();
+            
+            return $"Host={host.Hostname};Port={host.Port};" +
+                   $"Database={databaseName};Username=tenant_user;Password=***";
+        }
+        
+        throw new NotSupportedException($"Provider {provider} não suportado");
+    }
+}
+```
+
+## API Endpoints
+
+### MultiTenantController
+
+<AccordionGroup>
+  <Accordion title="POST /api/tenants - Criar Tenant">
+    ```csharp
+    [HttpPost]
+    [ProducesResponseType(typeof(TenantDto), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> CreateTenant(
+        [FromBody] CreateTenantRequest request)
+    {
+        var tenant = await _multiTenantService.CreateTenantAsync(request);
+        return CreatedAtAction(nameof(GetTenant), new { id = tenant.Id }, tenant);
+    }
+    ```
+    
+    **Request:**
+    ```json
+    {
+      "name": "Empresa ABC",
+      "email": "contato@empresaabc.com",
+      "planId": "plan_basic"
+    }
+    ```
+    
+    **Response (201):**
+    ```json
+    {
+      "id": "tenant_123",
+      "name": "Empresa ABC",
+      "email": "contato@empresaabc.com",
+      "plan": {
+        "id": "plan_basic",
+        "name": "Basic",
+        "maxDatabases": 1,
+        "maxUsers": 10
+      },
+      "databases": [],
+      "status": "Active",
+      "createdAt": "2024-01-15T10:30:00Z"
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="GET /api/tenants/{id} - Obter Tenant">
+    ```csharp
+    [HttpGet("{id}")]
+    [ProducesResponseType(typeof(TenantDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetTenant(string id)
+    {
+        var tenant = await _multiTenantService.GetTenantAsync(id);
+        if (tenant == null)
+            return NotFound();
+        
+        return Ok(tenant);
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="POST /api/tenants/{id}/databases - Alocar Database">
+    ```csharp
+    [HttpPost("{id}/databases")]
+    [ProducesResponseType(typeof(TenantDto), StatusCodes.Status200OK)]
+    public async Task<IActionResult> AllocateDatabase(
+        string id,
+        [FromBody] AllocateDatabaseRequest request)
+    {
+        var tenant = await _multiTenantService.AllocateDatabaseAsync(id, request);
+        return Ok(tenant);
+    }
+    ```
+    
+    **Request:**
+    ```json
+    {
+      "provider": "PostgreSQL",
+      "sizeInMB": 1024
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="PUT /api/tenants/{id}/plan - Mudar Plano">
+    ```csharp
+    [HttpPut("{id}/plan")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> ChangePlan(
+        string id,
+        [FromBody] ChangePlanRequest request)
+    {
+        await _multiTenantService.ChangePlanAsync(id, request.NewPlanId);
+        return NoContent();
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### PlanController
+
+<AccordionGroup>
+  <Accordion title="GET /api/plans - Listar Planos">
+    ```csharp
+    [HttpGet]
+    [ProducesResponseType(typeof(PagedResult<PlanDto>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetPlans(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 10)
+    {
+        var plans = await _planService.GetPlansAsync(page, pageSize);
+        return Ok(plans);
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="POST /api/plans - Criar Plano">
+    ```csharp
+    [HttpPost]
+    [ProducesResponseType(typeof(PlanDto), StatusCodes.Status201Created)]
+    public async Task<IActionResult> CreatePlan(
+        [FromBody] CreatePlanRequest request)
+    {
+        var plan = await _planService.CreatePlanAsync(request);
+        return CreatedAtAction(nameof(GetPlan), new { id = plan.Id }, plan);
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Eventos de Domínio
+
+<CodeGroup>
+```csharp TenantCreatedEvent
+public record TenantCreatedEvent
+{
+    public string TenantId { get; init; } = string.Empty;
+    public string Name { get; init; } = string.Empty;
+    public string Email { get; init; } = string.Empty;
+    public string PlanId { get; init; } = string.Empty;
+    public DateTime CreatedAt { get; init; }
+}
+```
+
+```csharp DatabaseAllocatedToTenantEvent
+public record DatabaseAllocatedToTenantEvent
+{
+    public string TenantId { get; init; } = string.Empty;
+    public string DatabaseId { get; init; } = string.Empty;
+    public string Provider { get; init; } = string.Empty;
+    public DateTime AllocatedAt { get; init; }
+}
+```
+
+```csharp TenantPlanChangedEvent
+public record TenantPlanChangedEvent
+{
+    public string TenantId { get; init; } = string.Empty;
+    public string OldPlanId { get; init; } = string.Empty;
+    public string NewPlanId { get; init; } = string.Empty;
+    public DateTime ChangedAt { get; init; }
+}
+```
+</CodeGroup>
+
+## Workloads
+
+O Backoffice utiliza um sistema de Workloads para gerenciar diferentes modos de execução:
+
+<Tabs>
+  <Tab title="WebApiWorkload">
+    Modo API REST padrão com controllers e endpoints HTTP.
+    
+    ```csharp
+    public class WebApiWorkload : IWorkload
+    {
+        public void Configure(WebApplication app)
+        {
+            app.UseRouting();
+            app.UseAuthentication();
+            app.UseAuthorization();
+            app.MapControllers();
+            app.UseSwagger();
+            app.UseSwaggerUI();
+        }
+    }
+    ```
+  </Tab>
+
+  <Tab title="WorkerWorkload">
+    Modo background worker para processamento assíncrono.
+    
+    ```csharp
+    public class WorkerWorkload : IWorkload
+    {
+        public void Configure(IServiceCollection services)
+        {
+            services.AddHostedService<TenantProvisioningWorker>();
+            services.AddHostedService<DatabaseMaintenanceWorker>();
+        }
+    }
+    ```
+  </Tab>
+
+  <Tab title="BootstrapWorkload">
+    Modo de inicialização para setup inicial.
+    
+    ```csharp
+    public class BootstrapWorkload : IWorkload
+    {
+        public async Task ExecuteAsync()
+        {
+            await RunBootstrappersAsync();
+            await SeedInitialDataAsync();
+        }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Testes
+
+### Testes Integrados
+
+```csharp
+[Collection("DatabaseCollection")]
+public class TenantCreationTests
+{
+    private readonly TestServerFixture _fixture;
+    
+    [Fact]
+    public async Task CreateTenant_WithValidData_ShouldSucceed()
+    {
+        // Arrange
+        var request = new CreateTenantRequest
+        {
+            Name = "Test Company",
+            Email = "test@company.com",
+            PlanId = "plan_basic"
+        };
+        
+        // Act
+        var response = await _fixture.Client.PostAsJsonAsync(
+            "/api/tenants", 
+            request);
+        
+        // Assert
+        response.EnsureSuccessStatusCode();
+        var tenant = await response.Content.ReadFromJsonAsync<TenantDto>();
+        
+        Assert.NotNull(tenant);
+        Assert.Equal("Test Company", tenant.Name);
+        Assert.Equal(ResourceStatus.Active, tenant.Status);
+    }
+}
+```
+
+## Configuração
+
+### appsettings.json
+
+```json
+{
+  "ConnectionStrings": {
+    "MainDatabase": "Host=localhost;Port=5432;Database=nwerp_main;Username=postgres;Password=***",
+    "Redis": "localhost:6379",
+    "RabbitMQ": "amqp://guest:guest@localhost:5672"
+  },
+  "Allocation": {
+    "DefaultProvider": "PostgreSQL",
+    "DefaultStorageSizeMB": 1024,
+    "MaxDatabasesPerHost": 10
+  },
+  "Plans": {
+    "DefaultPlanId": "plan_basic"
+  },
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning"
+    }
+  }
+}
+```
+
+## Deployment
+
+### Dockerfile
+
+```dockerfile
+FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS base
+WORKDIR /app
+EXPOSE 80
+EXPOSE 443
+
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+WORKDIR /src
+COPY ["backoffice/NWERP.Backoffice.AppHost/NWERP.Backoffice.AppHost.csproj", "backoffice/NWERP.Backoffice.AppHost/"]
+RUN dotnet restore "backoffice/NWERP.Backoffice.AppHost/NWERP.Backoffice.AppHost.csproj"
+COPY . .
+WORKDIR "/src/backoffice/NWERP.Backoffice.AppHost"
+RUN dotnet build "NWERP.Backoffice.AppHost.csproj" -c Release -o /app/build
+
+FROM build AS publish
+RUN dotnet publish "NWERP.Backoffice.AppHost.csproj" -c Release -o /app/publish
+
+FROM base AS final
+WORKDIR /app
+COPY --from=publish /app/publish .
+ENTRYPOINT ["dotnet", "NWERP.Backoffice.AppHost.dll"]
+```
+
+### Docker Compose
+
+```yaml
+services:
+  backoffice:
+    build:
+      context: .
+      dockerfile: backoffice.Dockerfile
+    ports:
+      - "7001:80"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ConnectionStrings__MainDatabase=Host=postgres;Port=5432;Database=nwerp_main;Username=postgres;Password=***
+      - ConnectionStrings__Redis=redis:6379
+      - ConnectionStrings__RabbitMQ=amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      - postgres
+      - redis
+      - rabbitmq
+```
+
+## Próximos Passos
+
+<CardGroup cols={2}>
+  <Card title="Gateway" icon="door-open" href="/nwerp/components/gateway">
+    Documentação do Gateway
+  </Card>
+  <Card title="Winthor" icon="link" href="/nwerp/components/winthor">
+    Integração com Winthor
+  </Card>
+  <Card title="GoPosify" icon="cash-register" href="/nwerp/components/goposify">
+    Sistema de PDV
+  </Card>
+  <Card title="APIs" icon="code" href="/nwerp/api/backoffice">
+    Referência completa da API
+  </Card>
+</CardGroup>
+

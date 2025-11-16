@@ -1,0 +1,1009 @@
+---
+title: "Bridge Service"
+description: "Serviço de integração e ponte de dados entre sistemas"
+icon: "bridge"
+---
+
+## Introdução
+
+O Bridge Service é o componente responsável por facilitar a integração e transformação de dados entre diferentes sistemas do ecossistema NWERP. Ele atua como uma ponte (daí o nome) conectando sistemas legados, bancos de dados externos e serviços internos através de um modelo unificado de processamento de dados.
+
+<CardGroup cols={2}>
+  <Card title="Integração de Dados" icon="database">
+    Transformação e sincronização entre sistemas
+  </Card>
+  <Card title="Event Sourcing" icon="timeline">
+    Captura e replay de eventos de negócio
+  </Card>
+  <Card title="Table Router" icon="route">
+    Roteamento inteligente de tabelas
+  </Card>
+  <Card title="Background Processing" icon="gears">
+    Processamento assíncrono com Hangfire
+  </Card>
+</CardGroup>
+
+## Arquitetura
+
+### Visão Geral
+
+```mermaid
+graph TB
+    subgraph "External Systems"
+        EXT1[Sistema Legado A]
+        EXT2[Sistema Legado B]
+        EXT3[API Externa]
+    end
+    
+    subgraph "Bridge Service"
+        API[REST API]
+        ROUTER[Table Router]
+        HANDLER[Table Handlers]
+        JOBS[Background Jobs]
+    end
+    
+    subgraph "Processing Pipeline"
+        EXTRACT[Extract]
+        TRANSFORM[Transform]
+        LOAD[Load]
+    end
+    
+    subgraph "Event System"
+        EVENTS[Event Publisher]
+        QUEUE[RabbitMQ]
+        CONSUMERS[Event Consumers]
+    end
+    
+    subgraph "Storage"
+        TENANT_DB[(Tenant Database)]
+        MAIN_DB[(Main Database)]
+    end
+    
+    EXT1 -->|Raw Data| API
+    EXT2 -->|Raw Data| API
+    EXT3 -->|Raw Data| API
+    
+    API --> ROUTER
+    ROUTER -->|Route| HANDLER
+    
+    HANDLER --> EXTRACT
+    EXTRACT --> TRANSFORM
+    TRANSFORM --> LOAD
+    
+    LOAD --> TENANT_DB
+    LOAD --> MAIN_DB
+    
+    HANDLER --> EVENTS
+    EVENTS --> QUEUE
+    QUEUE --> CONSUMERS
+    
+    JOBS -->|Scheduled| HANDLER
+    
+    style API fill:#e3f2fd
+    style ROUTER fill:#f3e5f5
+    style HANDLER fill:#fff3e0
+    style EVENTS fill:#e8f5e9
+```
+
+### Estrutura de Projetos
+
+<AccordionGroup>
+  <Accordion title="NWERP.Bridge.AppHost" icon="server">
+    **Camada de Apresentação** - API REST e Workloads
+    
+    **Componentes:**
+    - Controllers - Endpoints REST
+    - JobsConfig - Configuração de jobs Hangfire
+    - Workloads - Diferentes modos de execução
+    - DependencyInjection - Configuração de serviços
+    
+    **Workloads Disponíveis:**
+    - `DefaultWorkload` - Modo completo (API + Jobs + Workers)
+    - `BackgroundJobWorkload` - Apenas jobs agendados
+    - `WorkerWorkload` - Apenas workers de processamento
+    - `BootstrapWorkload` - Inicialização e setup
+  </Accordion>
+
+  <Accordion title="NWERP.Bridge.Application" icon="cogs">
+    **Camada de Aplicação** - Lógica de negócio
+    
+    Implementa serviços de:
+    - Transformação de dados
+    - Orquestração de integrações
+    - Validação de regras de negócio
+    - Coordenação de workflows
+  </Accordion>
+
+  <Accordion title="NWERP.Bridge.Contracts" icon="file-contract">
+    **Contratos** - Interfaces e DTOs
+    
+    **Principais Interfaces:**
+    - `ITableHandler` - Handler de tabelas
+    - `ITableConfiguracaoRouter` - Configuração de rotas
+    - `ICrudRepository` - Operações CRUD genéricas
+    - `IWinthorService` - Integração com Winthor
+    - `IDomainEventExtrator` - Extração de eventos
+    
+    **Entidades Base:**
+    - `BaseEntity` - Classe base para entidades
+    - `FilaEnvelope` - Envelope para mensagens de fila
+    - `IEntidade` - Interface de entidade
+    - `IVisao` - Interface para views
+    - `IProcedure` - Interface para procedures
+  </Accordion>
+
+  <Accordion title="NWERP.Bridge.Domain" icon="cube">
+    **Camada de Domínio**
+    
+    - Entidades de negócio
+    - Regras de domínio
+    - Value Objects
+    - Domain Events
+    - Adaptadores de dados
+  </Accordion>
+
+  <Accordion title="NWERP.Bridge.Infrastructure" icon="toolbox">
+    **Infraestrutura**
+    
+    - Adaptadores de mensageria (RabbitMQ)
+    - Adaptadores de scheduling (Hangfire)
+    - Implementações de repositórios
+    - Serviços de integração
+  </Accordion>
+
+  <Accordion title="NWERP.Bridge.Data.TenantDatabase" icon="database">
+    **Acesso a Dados**
+    
+    - `MainContext` - DbContext principal
+    - Mappings - Mapeamentos EF Core
+    - Migrations - Migrações de banco
+    - Repositories - Repositórios de dados
+  </Accordion>
+</AccordionGroup>
+
+## Conceitos Principais
+
+### Table Router
+
+Sistema inteligente de roteamento que direciona dados de tabelas para handlers específicos.
+
+```mermaid
+graph LR
+    A[Incoming Data] --> B{Table Router}
+    B -->|tabela_produtos| C[ProdutoHandler]
+    B -->|tabela_clientes| D[ClienteHandler]
+    B -->|tabela_pedidos| E[PedidoHandler]
+    B -->|tabela_*| F[GenericHandler]
+    
+    C --> G[Transform & Load]
+    D --> G
+    E --> G
+    F --> G
+    
+    G --> H[(Target Database)]
+    
+    style B fill:#f3e5f5
+    style G fill:#e8f5e9
+```
+
+**Interface do Table Router:**
+
+```csharp
+public interface ITableConfiguracaoRouter
+{
+    /// <summary>
+    /// Registra um handler para uma tabela específica
+    /// </summary>
+    void RegisterHandler<THandler>(string tableName) 
+        where THandler : ITableHandler;
+    
+    /// <summary>
+    /// Obtém o handler configurado para uma tabela
+    /// </summary>
+    ITableHandler GetHandler(string tableName);
+    
+    /// <summary>
+    /// Verifica se existe handler para a tabela
+    /// </summary>
+    bool HasHandler(string tableName);
+}
+```
+
+**Exemplo de Configuração:**
+
+```csharp
+public class TableRouterConfiguration
+{
+    public static void Configure(ITableConfiguracaoRouter router)
+    {
+        // Registrar handlers específicos
+        router.RegisterHandler<ProdutoTableHandler>("PCPRODUT");
+        router.RegisterHandler<ClienteTableHandler>("PCCLIENT");
+        router.RegisterHandler<PedidoTableHandler>("PCPEDC");
+        router.RegisterHandler<ItemPedidoTableHandler>("PCPEDI");
+        router.RegisterHandler<NotaFiscalTableHandler>("PCNFSAID");
+        
+        // Handler genérico para tabelas não mapeadas
+        router.RegisterHandler<GenericTableHandler>("*");
+    }
+}
+```
+
+### Table Handlers
+
+Handlers especializados para processar dados de tabelas específicas.
+
+<Tabs>
+  <Tab title="Interface Base">
+    ```csharp
+    public interface ITableHandler
+    {
+        /// <summary>
+        /// Nome da tabela que o handler processa
+        /// </summary>
+        string TableName { get; }
+        
+        /// <summary>
+        /// Processa os dados da tabela
+        /// </summary>
+        Task<ProcessResult> ProcessAsync(
+            TableData data, 
+            CancellationToken cancellationToken = default);
+        
+        /// <summary>
+        /// Valida os dados antes do processamento
+        /// </summary>
+        Task<ValidationResult> ValidateAsync(
+            TableData data,
+            CancellationToken cancellationToken = default);
+        
+        /// <summary>
+        /// Transforma os dados para o formato de destino
+        /// </summary>
+        Task<TransformedData> TransformAsync(
+            TableData data,
+            CancellationToken cancellationToken = default);
+    }
+    ```
+  </Tab>
+
+  <Tab title="Handler de Produto">
+    ```csharp
+    public class ProdutoTableHandler : ITableHandler
+    {
+        public string TableName => "PCPRODUT";
+        
+        private readonly ICrudRepository<Produto> _repository;
+        private readonly IEventPublisher _eventPublisher;
+        private readonly ILogger<ProdutoTableHandler> _logger;
+        
+        public async Task<ProcessResult> ProcessAsync(
+            TableData data, 
+            CancellationToken cancellationToken)
+        {
+            _logger.LogInformation(
+                "Processando {Count} produtos da tabela {Table}",
+                data.Rows.Count, TableName);
+            
+            // Validar dados
+            var validation = await ValidateAsync(data, cancellationToken);
+            if (!validation.IsValid)
+            {
+                return ProcessResult.Failed(validation.Errors);
+            }
+            
+            // Transformar dados
+            var transformed = await TransformAsync(data, cancellationToken);
+            
+            // Carregar no banco
+            var produtos = transformed.ToProdutos();
+            await _repository.BulkUpsertAsync(produtos, cancellationToken);
+            
+            // Publicar eventos
+            foreach (var produto in produtos)
+            {
+                await _eventPublisher.PublishAsync(
+                    new ProdutoSincronizadoEvent
+                    {
+                        CodigoProduto = produto.Codigo,
+                        Descricao = produto.Descricao,
+                        Timestamp = DateTime.UtcNow
+                    });
+            }
+            
+            return ProcessResult.Success(produtos.Count);
+        }
+        
+        public async Task<ValidationResult> ValidateAsync(
+            TableData data,
+            CancellationToken cancellationToken)
+        {
+            var errors = new List<string>();
+            
+            foreach (var row in data.Rows)
+            {
+                // Validar campos obrigatórios
+                if (string.IsNullOrEmpty(row.GetValue<string>("CODPROD")))
+                    errors.Add($"Linha {row.Index}: Código do produto é obrigatório");
+                
+                if (string.IsNullOrEmpty(row.GetValue<string>("DESCRICAO")))
+                    errors.Add($"Linha {row.Index}: Descrição é obrigatória");
+                
+                // Validar valores numéricos
+                var preco = row.GetValue<decimal?>("PVENDA");
+                if (preco.HasValue && preco.Value < 0)
+                    errors.Add($"Linha {row.Index}: Preço não pode ser negativo");
+            }
+            
+            return errors.Any() 
+                ? ValidationResult.Failed(errors)
+                : ValidationResult.Success();
+        }
+        
+        public async Task<TransformedData> TransformAsync(
+            TableData data,
+            CancellationToken cancellationToken)
+        {
+            var transformed = new List<ProdutoDto>();
+            
+            foreach (var row in data.Rows)
+            {
+                transformed.Add(new ProdutoDto
+                {
+                    Codigo = row.GetValue<string>("CODPROD"),
+                    Descricao = row.GetValue<string>("DESCRICAO"),
+                    Unidade = row.GetValue<string>("UNIDADE"),
+                    PrecoVenda = row.GetValue<decimal>("PVENDA"),
+                    CustoFinal = row.GetValue<decimal>("CUSTOFIN"),
+                    EstoqueAtual = row.GetValue<decimal>("QTESTGER"),
+                    EstoqueMinimo = row.GetValue<decimal>("ESTOQUEMIN"),
+                    EstoqueMaximo = row.GetValue<decimal>("ESTOQUEMAX"),
+                    Status = row.GetValue<string>("STATUS"),
+                    DataCadastro = row.GetValue<DateTime>("DTCADASTRO")
+                });
+            }
+            
+            return new TransformedData(transformed);
+        }
+    }
+    ```
+  </Tab>
+
+  <Tab title="Handler Genérico">
+    ```csharp
+    public class GenericTableHandler : ITableHandler
+    {
+        public string TableName => "*"; // Wildcard
+        
+        private readonly IGenericRepository _repository;
+        private readonly ILogger<GenericTableHandler> _logger;
+        
+        public async Task<ProcessResult> ProcessAsync(
+            TableData data, 
+            CancellationToken cancellationToken)
+        {
+            _logger.LogInformation(
+                "Processando {Count} registros da tabela {Table} com handler genérico",
+                data.Rows.Count, data.TableName);
+            
+            // Processamento genérico baseado em metadados
+            var metadata = await _repository.GetTableMetadataAsync(
+                data.TableName, 
+                cancellationToken);
+            
+            // Transformação baseada em schema
+            var records = data.Rows.Select(row => 
+                TransformGeneric(row, metadata)).ToList();
+            
+            // Bulk insert genérico
+            await _repository.BulkInsertAsync(
+                data.TableName, 
+                records, 
+                cancellationToken);
+            
+            return ProcessResult.Success(records.Count);
+        }
+        
+        private Dictionary<string, object> TransformGeneric(
+            TableRow row, 
+            TableMetadata metadata)
+        {
+            var record = new Dictionary<string, object>();
+            
+            foreach (var column in metadata.Columns)
+            {
+                var value = row.GetValue(column.Name);
+                record[column.Name] = ConvertValue(value, column.DataType);
+            }
+            
+            return record;
+        }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+### Event Sourcing
+
+O Bridge implementa Event Sourcing para capturar e processar eventos de mudanças de dados.
+
+```mermaid
+sequenceDiagram
+    participant Source as Source System
+    participant Bridge as Bridge Service
+    participant EventStore as Event Store
+    participant Queue as RabbitMQ
+    participant Consumer as Event Consumer
+    
+    Source->>Bridge: Send Data Change
+    Bridge->>Bridge: Extract Domain Event
+    Bridge->>EventStore: Store Event
+    Bridge->>Queue: Publish Event
+    Queue->>Consumer: Deliver Event
+    Consumer->>Consumer: Process Event
+    Consumer-->>Bridge: Ack
+```
+
+**Domain Event Extractor:**
+
+```csharp
+public interface IDomainEventExtrator
+{
+    /// <summary>
+    /// Extrai eventos de domínio dos dados
+    /// </summary>
+    IEnumerable<IDomainEvent> Extract(TableData data);
+}
+
+public class ProdutoEventExtrator : IDomainEventExtrator
+{
+    public IEnumerable<IDomainEvent> Extract(TableData data)
+    {
+        foreach (var row in data.Rows)
+        {
+            var operation = row.GetOperation();
+            
+            yield return operation switch
+            {
+                DataOperation.Insert => new ProdutoCriadoEvent
+                {
+                    CodigoProduto = row.GetValue<string>("CODPROD"),
+                    Descricao = row.GetValue<string>("DESCRICAO"),
+                    Timestamp = DateTime.UtcNow
+                },
+                DataOperation.Update => new ProdutoAtualizadoEvent
+                {
+                    CodigoProduto = row.GetValue<string>("CODPROD"),
+                    CamposAlterados = row.GetChangedFields(),
+                    Timestamp = DateTime.UtcNow
+                },
+                DataOperation.Delete => new ProdutoRemovidoEvent
+                {
+                    CodigoProduto = row.GetValue<string>("CODPROD"),
+                    Timestamp = DateTime.UtcNow
+                },
+                _ => throw new InvalidOperationException(
+                    $"Operação não suportada: {operation}")
+            };
+        }
+    }
+}
+```
+
+## Funcionalidades Principais
+
+### 1. Integração com Winthor
+
+Conecta-se ao Winthor para extrair e processar dados.
+
+```csharp
+public interface IWinthorService
+{
+    /// <summary>
+    /// Extrai dados de uma tabela do Winthor
+    /// </summary>
+    Task<TableData> ExtractTableAsync(
+        string tableName,
+        DateTime? fromDate = null,
+        CancellationToken cancellationToken = default);
+    
+    /// <summary>
+    /// Sincroniza uma tabela específica
+    /// </summary>
+    Task<SyncResult> SyncTableAsync(
+        string tableName,
+        SyncOptions options,
+        CancellationToken cancellationToken = default);
+    
+    /// <summary>
+    /// Executa uma procedure no Winthor
+    /// </summary>
+    Task<ProcedureResult> ExecuteProcedureAsync(
+        string procedureName,
+        Dictionary<string, object> parameters,
+        CancellationToken cancellationToken = default);
+}
+```
+
+**Exemplo de Uso:**
+
+```csharp
+[HttpPost("sync/winthor/{tableName}")]
+public async Task<IActionResult> SyncWinthorTable(
+    string tableName,
+    [FromBody] SyncOptions options)
+{
+    var result = await _winthorService.SyncTableAsync(
+        tableName, 
+        options);
+    
+    return Ok(new
+    {
+        Table = tableName,
+        RecordsProcessed = result.RecordsProcessed,
+        Success = result.Success,
+        Duration = result.Duration,
+        Errors = result.Errors
+    });
+}
+```
+
+### 2. Exportação de Pedidos
+
+Exporta pedidos para sistemas externos (ex: Polibras).
+
+<CodeGroup>
+```csharp Job Configuration
+public class ExportarPedidoPolibras
+{
+    public static void Configure(IRecurringJobManager jobManager)
+    {
+        jobManager.AddOrUpdate(
+            "exportar-pedidos-polibras",
+            () => ExportarPedidosAsync(),
+            "*/30 * * * *"); // A cada 30 minutos
+    }
+    
+    public static async Task ExportarPedidosAsync()
+    {
+        var pedidosPendentes = await _repository
+            .GetPedidosPendentesExportacaoAsync();
+        
+        foreach (var pedido in pedidosPendentes)
+        {
+            try
+            {
+                await ExportarPedidoAsync(pedido);
+                await _repository.MarcarComoExportadoAsync(pedido.Id);
+            }
+            catch (Exception ex)
+            {
+                await _repository.RegistrarErroExportacaoAsync(
+                    pedido.Id, 
+                    ex.Message);
+            }
+        }
+    }
+}
+```
+
+```csharp Export Logic
+private async Task ExportarPedidoAsync(Pedido pedido)
+{
+    // Transformar para formato externo
+    var pedidoExterno = new PedidoPolibrasDto
+    {
+        NumeroPedido = pedido.Numero,
+        DataPedido = pedido.Data,
+        Cliente = new ClienteDto
+        {
+            Codigo = pedido.Cliente.Codigo,
+            Nome = pedido.Cliente.Nome,
+            CNPJ = pedido.Cliente.CNPJ
+        },
+        Itens = pedido.Itens.Select(i => new ItemPedidoDto
+        {
+            CodigoProduto = i.Produto.Codigo,
+            Quantidade = i.Quantidade,
+            PrecoUnitario = i.PrecoUnitario,
+            Total = i.Total
+        }).ToList(),
+        ValorTotal = pedido.ValorTotal
+    };
+    
+    // Enviar para API externa
+    await _polibraasApi.EnviarPedidoAsync(pedidoExterno);
+    
+    // Publicar evento
+    await _eventPublisher.PublishAsync(new PedidoExportadoEvent
+    {
+        PedidoId = pedido.Id,
+        Sistema = "Polibras",
+        Timestamp = DateTime.UtcNow
+    });
+}
+```
+</CodeGroup>
+
+### 3. Visões de Integração
+
+Interface para criar views customizadas de integração.
+
+```csharp
+public interface IVisaoIntegracao
+{
+    /// <summary>
+    /// Nome da visão
+    /// </summary>
+    string Nome { get; }
+    
+    /// <summary>
+    /// Query SQL da visão
+    /// </summary>
+    string Query { get; }
+    
+    /// <summary>
+    /// Executa a visão e retorna os dados
+    /// </summary>
+    Task<IEnumerable<dynamic>> ExecuteAsync(
+        Dictionary<string, object>? parameters = null);
+}
+
+public class VendasPorClienteVisao : IVisaoIntegracao
+{
+    public string Nome => "VendasPorCliente";
+    
+    public string Query => @"
+        SELECT 
+            c.CODCLI,
+            c.CLIENTE,
+            COUNT(p.NUMPED) as TOTAL_PEDIDOS,
+            SUM(p.VLTOTAL) as VALOR_TOTAL,
+            AVG(p.VLTOTAL) as TICKET_MEDIO
+        FROM PCCLIENT c
+        LEFT JOIN PCPEDC p ON c.CODCLI = p.CODCLI
+        WHERE p.DATA >= @DataInicial
+          AND p.DATA <= @DataFinal
+        GROUP BY c.CODCLI, c.CLIENTE
+        ORDER BY VALOR_TOTAL DESC";
+    
+    public async Task<IEnumerable<dynamic>> ExecuteAsync(
+        Dictionary<string, object>? parameters = null)
+    {
+        return await _dapperContext.QueryAsync<dynamic>(
+            Query, 
+            parameters);
+    }
+}
+```
+
+## Background Jobs
+
+O Bridge utiliza Hangfire para processar jobs em background.
+
+<Tabs>
+  <Tab title="Jobs Recorrentes">
+    ```csharp
+    public class CreateJobs
+    {
+        public static void ConfigureRecurringJobs(IServiceProvider services)
+        {
+            var jobManager = services.GetRequiredService<IRecurringJobManager>();
+            
+            // Exportação de pedidos - A cada 30 minutos
+            jobManager.AddOrUpdate(
+                "exportar-pedidos-polibras",
+                () => ExportarPedidosPolibrasAsync(),
+                "*/30 * * * *");
+            
+            // Sincronização de cadastros - A cada hora
+            jobManager.AddOrUpdate(
+                "sync-cadastros-winthor",
+                () => SyncCadastrosWinthorAsync(),
+                "0 * * * *");
+            
+            // Consolidação de dados - Diariamente às 02:00
+            jobManager.AddOrUpdate(
+                "consolidar-dados",
+                () => ConsolidarDadosAsync(),
+                "0 2 * * *");
+            
+            // Limpeza de logs - Semanalmente
+            jobManager.AddOrUpdate(
+                "limpeza-logs",
+                () => LimparLogsAntigosAsync(30),
+                "0 0 * * 0");
+        }
+    }
+    ```
+  </Tab>
+
+  <Tab title="Jobs Sob Demanda">
+    ```csharp
+    [HttpPost("jobs/sync-table")]
+    public async Task<IActionResult> TriggerTableSync(
+        [FromBody] TableSyncRequest request)
+    {
+        var jobId = BackgroundJob.Enqueue<IWinthorService>(
+            service => service.SyncTableAsync(
+                request.TableName,
+                request.Options,
+                CancellationToken.None));
+        
+        return Accepted(new 
+        { 
+            JobId = jobId,
+            Message = $"Sincronização da tabela {request.TableName} iniciada"
+        });
+    }
+    
+    [HttpGet("jobs/{jobId}/status")]
+    public IActionResult GetJobStatus(string jobId)
+    {
+        var monitoring = JobStorage.Current.GetMonitoringApi();
+        var jobDetails = monitoring.JobDetails(jobId);
+        
+        if (jobDetails == null)
+            return NotFound();
+        
+        return Ok(new
+        {
+            JobId = jobId,
+            State = jobDetails.History[0].StateName,
+            CreatedAt = jobDetails.CreatedAt,
+            Properties = jobDetails.Properties
+        });
+    }
+    ```
+  </Tab>
+
+  <Tab title="Jobs Customizados">
+    ```csharp
+    public class CustomTableProcessingJob
+    {
+        private readonly ITableHandler _handler;
+        private readonly ILogger<CustomTableProcessingJob> _logger;
+        
+        public async Task ProcessAsync(
+            string tableName,
+            ProcessingOptions options)
+        {
+            _logger.LogInformation(
+                "Processando tabela customizada: {Table}",
+                tableName);
+            
+            var data = await ExtractDataAsync(tableName, options);
+            var result = await _handler.ProcessAsync(data);
+            
+            if (!result.Success)
+            {
+                throw new JobExecutionException(
+                    $"Erro ao processar tabela {tableName}: {result.Error}");
+            }
+            
+            _logger.LogInformation(
+                "Tabela {Table} processada com sucesso. {Count} registros",
+                tableName, result.RecordsProcessed);
+        }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Workloads
+
+O Bridge suporta diferentes modos de execução através de Workloads.
+
+```mermaid
+graph TB
+    A[Bridge Service]
+    
+    B[DefaultWorkload<br/>Completo]
+    C[BackgroundJobWorkload<br/>Jobs Apenas]
+    D[WorkerWorkload<br/>Workers Apenas]
+    E[BootstrapWorkload<br/>Inicialização]
+    
+    A --> B
+    A --> C
+    A --> D
+    A --> E
+    
+    B --> B1[API REST]
+    B --> B2[Background Jobs]
+    B --> B3[Workers]
+    
+    C --> C1[Hangfire Server]
+    C --> C2[Scheduled Jobs]
+    
+    D --> D1[Message Consumers]
+    D --> D2[Event Processors]
+    
+    E --> E1[Database Setup]
+    E --> E2[Initial Config]
+    
+    style B fill:#e3f2fd
+    style C fill:#f3e5f5
+    style D fill:#fff3e0
+    style E fill:#e8f5e9
+```
+
+**Configuração:**
+
+```csharp
+// Program.cs
+var builder = WebApplication.CreateBuilder(args);
+
+var workloadType = builder.Configuration
+    .GetValue<string>("WORKLOAD_TYPE", "default");
+
+IWorkload workload = workloadType.ToLower() switch
+{
+    "api" => new ApiOnlyWorkload(),
+    "jobs" => new BackgroundJobWorkload(),
+    "worker" => new WorkerWorkload(),
+    "bootstrap" => new BootstrapWorkload(),
+    _ => new DefaultWorkload()
+};
+
+workload.ConfigureServices(builder.Services, builder.Configuration);
+
+var app = builder.Build();
+
+workload.ConfigureMiddleware(app);
+
+app.Run();
+```
+
+## Configuração
+
+### appsettings.json
+
+```json
+{
+  "ConnectionStrings": {
+    "TenantDatabase": "Host=localhost;Port=5432;Database=bridge_tenant;Username=postgres;Password=***",
+    "MainDatabase": "Host=localhost;Port=5432;Database=nwerp_main;Username=postgres;Password=***",
+    "WinthorOracle": "Data Source=(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=oracle-server)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=winthor)));User Id=user;Password=***;",
+    "RabbitMQ": "amqp://guest:guest@localhost:5672",
+    "Redis": "localhost:6379"
+  },
+  "Hangfire": {
+    "DashboardPath": "/hangfire",
+    "WorkerCount": 3,
+    "PollingInterval": "00:00:15"
+  },
+  "Bridge": {
+    "EnableAutoRouting": true,
+    "BatchSize": 1000,
+    "MaxRetries": 3,
+    "TimeoutSeconds": 300
+  },
+  "TableRouter": {
+    "DefaultHandler": "GenericTableHandler",
+    "CaseSensitive": false
+  },
+  "Integration": {
+    "PolibraasApiUrl": "https://api.polibras.com.br",
+    "PolibraasApiKey": "***",
+    "EnableEventSourcing": true
+  }
+}
+```
+
+## Deployment
+
+### Docker Compose
+
+```yaml
+services:
+  bridge:
+    build:
+      context: .
+      dockerfile: bridge.Dockerfile
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - WORKLOAD_TYPE=default
+      - ConnectionStrings__TenantDatabase=${TENANT_DB_CONN}
+      - ConnectionStrings__MainDatabase=${MAIN_DB_CONN}
+      - ConnectionStrings__WinthorOracle=${WINTHOR_ORACLE_CONN}
+      - ConnectionStrings__RabbitMQ=amqp://guest:guest@rabbitmq:5672
+    ports:
+      - "7010:80"
+    depends_on:
+      - postgres
+      - rabbitmq
+    restart: unless-stopped
+
+  bridge-worker:
+    build:
+      context: .
+      dockerfile: bridge.Dockerfile
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - WORKLOAD_TYPE=worker
+      - ConnectionStrings__RabbitMQ=amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      - postgres
+      - rabbitmq
+    restart: unless-stopped
+    replicas: 2
+
+  bridge-jobs:
+    build:
+      context: .
+      dockerfile: bridge.Dockerfile
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - WORKLOAD_TYPE=jobs
+      - ConnectionStrings__TenantDatabase=${TENANT_DB_CONN}
+    ports:
+      - "7011:80"
+    depends_on:
+      - postgres
+    restart: unless-stopped
+    replicas: 1
+```
+
+## Monitoramento
+
+### Métricas
+
+```csharp
+// Contador de tabelas processadas
+var tablesProcessed = Metrics.CreateCounter(
+    "bridge_tables_processed_total",
+    "Total de tabelas processadas",
+    new CounterConfiguration
+    {
+        LabelNames = new[] { "table_name", "status" }
+    });
+
+// Histograma de duração de processamento
+var processingDuration = Metrics.CreateHistogram(
+    "bridge_processing_duration_seconds",
+    "Duração do processamento",
+    new HistogramConfiguration
+    {
+        LabelNames = new[] { "table_name" }
+    });
+
+// Gauge de registros na fila
+var queueSize = Metrics.CreateGauge(
+    "bridge_queue_size",
+    "Tamanho da fila de processamento");
+```
+
+### Health Checks
+
+```csharp
+builder.Services.AddHealthChecks()
+    .AddNpgSql(
+        builder.Configuration.GetConnectionString("TenantDatabase"),
+        name: "tenant-database")
+    .AddOracle(
+        builder.Configuration.GetConnectionString("WinthorOracle"),
+        name: "winthor-oracle")
+    .AddRabbitMQ(
+        builder.Configuration.GetConnectionString("RabbitMQ"),
+        name: "rabbitmq")
+    .AddCheck<TableRouterHealthCheck>("table-router")
+    .AddCheck<HandlerRegistrationHealthCheck>("handlers");
+```
+
+## Próximos Passos
+
+<CardGroup cols={2}>
+  <Card title="Winthor Integration" icon="link" href="/nwerp/components/winthor">
+    Integração com Winthor
+  </Card>
+  <Card title="Backoffice" icon="building" href="/nwerp/components/backoffice">
+    Serviço Backoffice
+  </Card>
+  <Card title="Deployment" icon="server" href="/nwerp/deployment/infrastructure">
+    Guias de deployment
+  </Card>
+  <Card title="APIs" icon="code" href="/nwerp/api/bridge">
+    Referência da API
+  </Card>
+</CardGroup>
+

@@ -1,0 +1,33 @@
+services:
+  docs:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nwerp-docs
+    ports:
+      - "3000:3000"
+    volumes:
+      # Montar diretórios de documentação para hot reload
+      - ./nwerp:/app/nwerp
+      - ./logo:/app/logo
+      - ./images:/app/images
+      - ./docs.json:/app/docs.json
+      - ./favicon.svg:/app/favicon.svg
+      # Evitar montar node_modules
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+    restart: unless-stopped
+    networks:
+      - docs-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  docs-network:
+    driver: bridge
+
